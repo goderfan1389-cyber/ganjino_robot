@@ -4,6 +4,8 @@ import os
 import re
 import random
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 # تلاش برای بارگذاری فایل .env در حالت اجرای محلی (روی ریلوی نیازی نیست،
 # چون ریلوی خودش متغیرهای محیطی رو تزریق می‌کنه). اگه پکیج نصب نبود، مشکلی نیست.
@@ -142,15 +144,25 @@ GAME_STORE_KEYS = ("_dooz_games", "_casino_games", "_rps_games", "_guess_games")
 NON_USER_KEYS = ("_groups", "_game_counter", "_referral_bonus", "_admin_pending") + GAME_STORE_KEYS
 
 # ===== ذخیره‌سازی داده =====
+# یک Session مشترک برای همه‌ی درخواست‌های HTTP: اتصال TCP/TLS رو نگه می‌داره و دوباره
+# باز نمی‌کنه، در نتیجه هر درخواست به API خیلی سریع‌تر انجام می‌شه.
+SESSION = requests.Session()
+SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50))
+
+# قفل برای جلوگیری از خراب شدن فایل دیتا وقتی چند آپدیت هم‌زمان (روی چند ترد) پردازش می‌شن.
+DATA_LOCK = threading.RLock()
+
 def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    with DATA_LOCK:
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
 
 def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    with DATA_LOCK:
+        with open(DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
 
 def get_user(data, user_id):
     uid = str(user_id)
@@ -305,15 +317,36 @@ def notify_referrer(ref_id, invitee_name, bonus):
     send_message(ref_id, text)
 
 # ===== توابع ارتباط با API بله =====
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
+# این متغیر توی هر ترد جدا نگه‌داری می‌شه (هر آپدیت توی یک ترد پردازش می‌شه).
+# وقتی هندل‌کردن یک پیام شروع می‌شه، آیدی همون پیام رو اینجا می‌ذاریم تا send_message
+# خودکار روی همون پیام ریپلای بزنه؛ نیازی نیست تک‌تک جاهایی که send_message صدا زده
+# می‌شه رو دستی تغییر بدیم.
+_reply_ctx = threading.local()
+
+def set_reply_context(chat_id, message_id):
+    _reply_ctx.chat_id = chat_id
+    _reply_ctx.message_id = message_id
+
+def clear_reply_context():
+    _reply_ctx.chat_id = None
+    _reply_ctx.message_id = None
+
+def send_message(chat_id, text, reply_markup=None, parse_mode=None, reply_to_message_id=None):
     url = f"{BASE_URL}/sendMessage"
+    if reply_to_message_id is None:
+        ctx_chat = getattr(_reply_ctx, "chat_id", None)
+        ctx_mid = getattr(_reply_ctx, "message_id", None)
+        if ctx_chat is not None and ctx_mid is not None and ctx_chat == chat_id:
+            reply_to_message_id = ctx_mid
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup is not None:
         payload["reply_markup"] = json.dumps(reply_markup)
     if parse_mode:
         payload["parse_mode"] = parse_mode
+    if reply_to_message_id:
+        payload["reply_to_message_id"] = reply_to_message_id
     try:
-        return requests.post(url, data=payload, timeout=10)
+        return SESSION.post(url, data=payload, timeout=10)
     except Exception as e:
         print("send_message error:", e)
         return None
@@ -326,7 +359,7 @@ def send_document(chat_id, file_path, caption=None):
             if caption:
                 payload["caption"] = caption
             files = {"document": (os.path.basename(file_path), f)}
-            return requests.post(url, data=payload, files=files, timeout=30)
+            return SESSION.post(url, data=payload, files=files, timeout=30)
     except Exception as e:
         print("send_document error:", e)
         return None
@@ -341,7 +374,7 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     if parse_mode:
         payload["parse_mode"] = parse_mode
     try:
-        requests.post(url, data=payload, timeout=10)
+        SESSION.post(url, data=payload, timeout=10)
     except Exception as e:
         print("edit_message error:", e)
 
@@ -352,7 +385,7 @@ def answer_callback(callback_id, text="", show_alert=True):
         payload["text"] = text
         payload["show_alert"] = show_alert
     try:
-        requests.post(url, data=payload, timeout=10)
+        SESSION.post(url, data=payload, timeout=10)
     except Exception as e:
         print("answer_callback error:", e)
 
@@ -366,7 +399,7 @@ def get_sent_message_id(resp):
 
 def check_joined_channel(user_id):
     try:
-        resp = requests.get(f"{BASE_URL}/getChatMember", params={
+        resp = SESSION.get(f"{BASE_URL}/getChatMember", params={
             "chat_id": f"@{JOIN_CHANNEL_USERNAME}",
             "user_id": user_id,
         }, timeout=10)
@@ -1097,7 +1130,7 @@ def broadcast_forward(data, admin_chat_id, admin_message_id):
     count = 0
     for uid, _ in users:
         try:
-            requests.post(f"{BASE_URL}/forwardMessage", data={
+            SESSION.post(f"{BASE_URL}/forwardMessage", data={
                 "chat_id": uid,
                 "from_chat_id": admin_chat_id,
                 "message_id": admin_message_id,
@@ -1235,14 +1268,14 @@ def handle_admin_menu_callback(data, cb, data_cb):
     if action == "top_users":
         answer_callback(cb_id)
         users = all_real_users(data)
-        top = sorted(users, key=lambda x: x[1].get("gold", 0), reverse=True)[:10]
+        top = sorted(users, key=lambda x: x[1].get("bank", 0), reverse=True)[:10]
         if not top:
             send_message(chat_id, "هنوز کاربری ثبت نشده.")
             return
-        lines = ["🏆 برترین کاربران (بر اساس کیسه طلا):\n"]
+        lines = ["🏆 برترین کاربران (بر اساس خزانه):\n"]
         for i, (uid, u) in enumerate(top, start=1):
             emoji = RANK_EMOJIS[i - 1] if i <= len(RANK_EMOJIS) else f"{i}."
-            lines.append(f"{emoji} {u.get('name', 'کاربر')} — {u.get('gold', 0):,} طلا")
+            lines.append(f"{emoji} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
         send_message(chat_id, "\n".join(lines))
         return
 
@@ -1310,6 +1343,13 @@ def handle_message(msg):
 
     if not text or user_id is None:
         return
+
+    # توی گروه‌ها، جواب ربات رو ریپلای روی پیام همون کاربر می‌فرستیم تا با پیام‌های
+    # بقیه قاطی نشه؛ توی چت خصوصی لازم نیست (فقط خودشه و ربات).
+    if chat_type in ("group", "supergroup"):
+        set_reply_context(chat_id, msg.get("message_id"))
+    else:
+        clear_reply_context()
 
     data0 = load_data()
     u0 = get_user(data0, user_id)
@@ -1795,7 +1835,7 @@ def handle_message(msg):
     if stripped == "رتبه":
         data = load_data()
         users = all_real_users(data)
-        users.sort(key=lambda x: x[1].get("gold", 0), reverse=True)
+        users.sort(key=lambda x: x[1].get("bank", 0), reverse=True)
         global_top = users[:10]
 
         lines = []
@@ -1803,17 +1843,17 @@ def handle_message(msg):
         if chat_type in ("group", "supergroup"):
             member_ids = data.get("_groups", {}).get(str(chat_id), [])
             group_users = [(str(uid), data[str(uid)]) for uid in member_ids if str(uid) in data]
-            group_users.sort(key=lambda x: x[1].get("gold", 0), reverse=True)
+            group_users.sort(key=lambda x: x[1].get("bank", 0), reverse=True)
             group_top = group_users[:10]
 
             lines.append("🏆 ۱۰ نفر برتر گروه:")
             for i, (uid, u) in enumerate(group_top):
-                lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} — {u.get('gold', 0):,} طلا")
+                lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
             lines.append("")
 
         lines.append("🌍 ۱۰ نفر برتر کل ربات:")
         for i, (uid, u) in enumerate(global_top):
-            lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} — {u.get('gold', 0):,} طلا")
+            lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
 
         send_message(chat_id, "\n".join(lines))
         return
@@ -1928,6 +1968,7 @@ def handle_jail_ticket(data, cb, target_user_id):
     answer_callback(cb_id, "آزاد شدید!")
 
 def handle_callback(cb):
+    clear_reply_context()
     cb_id = cb["id"]
     chat_id = cb["message"]["chat"]["id"]
     user = cb.get("from", {})
@@ -2026,6 +2067,24 @@ def handle_callback(cb):
     save_data(data)
 
 # ===== حلقه اصلی (Long Polling) =====
+# هر آپدیت رو توی یک ترد جدا از یک استخر ترد پردازش می‌کنیم تا وقتی چند نفر هم‌زمان
+# با ربات کار می‌کنن، پیام یک نفر منتظر تموم‌شدن پردازش پیام قبلی نمونه (سرعت خیلی بیشتر می‌شه).
+EXECUTOR = ThreadPoolExecutor(max_workers=16)
+
+def process_update(update):
+    # کل پردازش هر آپدیت (شامل load_data/save_data) با قفل انجام می‌شه تا وقتی چند
+    # آپدیت هم‌زمان اومدن، تغییرات کاربرها روی هم overwrite نشن و دیتا خراب نشه؛
+    # ولی چون توی یک ترد جدا اجرا می‌شه، حلقه‌ی اصلی معطل تموم شدنش نمی‌مونه و
+    # بلافاصله می‌ره سراغ گرفتن آپدیت‌های بعدی.
+    with DATA_LOCK:
+        try:
+            if "message" in update:
+                handle_message(update["message"])
+            elif "callback_query" in update:
+                handle_callback(update["callback_query"])
+        except Exception as e:
+            print("process_update error:", e)
+
 def main():
     print("ربات طلا در حال اجراست...")
     offset = None
@@ -2036,7 +2095,7 @@ def main():
         if offset:
             params["offset"] = offset
         try:
-            resp = requests.get(f"{BASE_URL}/getUpdates", params=params, timeout=35)
+            resp = SESSION.get(f"{BASE_URL}/getUpdates", params=params, timeout=35)
             updates = resp.json().get("result", [])
         except Exception as e:
             print("getUpdates error:", e)
@@ -2045,10 +2104,7 @@ def main():
 
         for update in updates:
             offset = update["update_id"] + 1
-            if "message" in update:
-                handle_message(update["message"])
-            elif "callback_query" in update:
-                handle_callback(update["callback_query"])
+            EXECUTOR.submit(process_update, update)
 
 if __name__ == "__main__":
     main()
