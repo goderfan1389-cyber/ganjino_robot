@@ -5,22 +5,18 @@ import re
 import random
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
-# تلاش برای بارگذاری فایل .env در حالت اجرای محلی (روی ریلوی نیازی نیست،
-# چون ریلوی خودش متغیرهای محیطی رو تزریق می‌کنه). اگه پکیج نصب نبود، مشکلی نیست.
+# تلاش برای بارگذاری فایل .env در حالت اجرای محلی
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 
-# ===== تنظیمات حساس (از متغیرهای محیطی / Environment Variables خونده می‌شن) =====
-# این مقادیر رو توی پنل Railway، بخش Variables ست کن. اگه ست نشن، مقدار پیش‌فرض
-# (همون مقادیر فعلی) استفاده می‌شه تا اجرای محلی هم خراب نشه.
+# ===== تنظیمات حساس =====
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "1178057070:HPKhPZfmr8oVwDqSXIpbDFfqBroohnuHWd8")
-BOT_USERNAME = os.environ.get("BOT_USERNAME", "GANJINO_BOT")          # یوزرنیم ربات (برای دستورات @ و لینک زیرمجموعه‌گیری)
-MAIN_GROUP_USERNAME = os.environ.get("MAIN_GROUP_USERNAME", "GANJINO_GAP")    # یوزرنیم گروه اصلی
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "GANJINO_BOT")
+MAIN_GROUP_USERNAME = os.environ.get("MAIN_GROUP_USERNAME", "GANJINO_GAP")
 JOIN_CHANNEL_USERNAME = os.environ.get("JOIN_CHANNEL_USERNAME", "computer_program")
 BACKUP_PASSWORD = os.environ.get("BACKUP_PASSWORD", "GANJINO_TEAM_IR")
 
@@ -30,12 +26,15 @@ def _parse_id_set(env_name, default_csv):
 
 ADMIN_IDS = _parse_id_set("ADMIN_IDS", "324157864,890352247")
 OWNER_ID = int(os.environ.get("OWNER_ID", "324157864"))
-# دستور مخفی و سخت مخصوص مالک ربات برای ریست کامل اطلاعات یک کاربر.
-# فقط OWNER_ID می‌تونه از این دستور استفاده کنه (نه بقیه ادمین‌ها).
 OWNER_RESET_USER_CMD = os.environ.get("OWNER_RESET_USER_CMD", "/resetuser_9fK7xQ2pLmZ8vR3")
 
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 DATA_FILE = "bot_data.json"
+
+# ===== بهینه‌سازی سرعت =====
+session = requests.Session()
+data_lock = threading.Lock()
+last_game_check = 0.0
 
 CLAIM_COOLDOWN_SECONDS = 4 * 60
 DAILY_COOLDOWN_SECONDS = 24 * 60 * 60
@@ -54,8 +53,8 @@ REFERRAL_BONUS_DEFAULT = 7500
 JAIL_SECONDS = 10 * 60
 JAIL_RANSOM = 50
 ARREST_BASE_CHANCE = 0.30
-KNIFE_ARREST_DISCOUNT = 0.10   # چاقو: ۳۰٪ -> ۲۰٪
-MASK_ARREST_DISCOUNT = 0.15    # ماسک: تاثیر بیشتر، قابل جمع با چاقو
+KNIFE_ARREST_DISCOUNT = 0.10
+MASK_ARREST_DISCOUNT = 0.15
 MIN_ARREST_CHANCE = 0.05
 
 MAGNET_GOLD_RANGE = (60, 300)
@@ -113,7 +112,7 @@ HELP_TEXT = """📖 راهنمای کامل ربات طلا 🪙
 🔸 دکمه «زیرمجموعه‌های من» — دیدن لیست دعوت‌شده‌ها
 
 🏆 رتبه‌بندی
-🔸 رتبه — ۱۰ نفر برتر گروه و ۱۰ نفر برتر کل ربات
+🔸 رتبه — ۱۰ نفر برتر گروه و ۱۰ نفر برتر کل ربات (بر اساس خزانه)
 
 🎮 بازی‌های شرط‌بندی (با کیسه طلا)
 🔸 دوز [مبلغ] — بازی دوز (XO) دو نفره ⭕❌
@@ -144,25 +143,15 @@ GAME_STORE_KEYS = ("_dooz_games", "_casino_games", "_rps_games", "_guess_games")
 NON_USER_KEYS = ("_groups", "_game_counter", "_referral_bonus", "_admin_pending") + GAME_STORE_KEYS
 
 # ===== ذخیره‌سازی داده =====
-# یک Session مشترک برای همه‌ی درخواست‌های HTTP: اتصال TCP/TLS رو نگه می‌داره و دوباره
-# باز نمی‌کنه، در نتیجه هر درخواست به API خیلی سریع‌تر انجام می‌شه.
-SESSION = requests.Session()
-SESSION.mount("https://", requests.adapters.HTTPAdapter(pool_connections=50, pool_maxsize=50))
-
-# قفل برای جلوگیری از خراب شدن فایل دیتا وقتی چند آپدیت هم‌زمان (روی چند ترد) پردازش می‌شن.
-DATA_LOCK = threading.RLock()
-
 def load_data():
-    with DATA_LOCK:
-        if os.path.exists(DATA_FILE):
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 def save_data(data):
-    with DATA_LOCK:
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get_user(data, user_id):
     uid = str(user_id)
@@ -201,8 +190,6 @@ def record_group_membership(data, chat_id, chat_type, user_id):
             members.append(user_id)
 
 def all_real_users(data):
-    # فقط رکوردهای واقعی کاربر (دیکشنری) در نظر گرفته می‌شن تا داده‌های
-    # ناقص/قدیمی (مثلا لیست) باعث کرش پنل ادمین نشن.
     return [(uid, u) for uid, u in data.items() if uid not in NON_USER_KEYS and isinstance(u, dict)]
 
 def next_game_id(data):
@@ -238,8 +225,8 @@ def jail_block_keyboard(u, user_id):
         rows.append([{"text": f"🎫 استفاده از بلیط آزادی (موجودی: {ticket_count})", "callback_data": f"jail_ticket_{user_id}"}])
     return {"inline_keyboard": rows}
 
-def send_jail_block_message(chat_id, user_id, u):
-    send_message(chat_id, jail_block_message(u), reply_markup=jail_block_keyboard(u, user_id))
+def send_jail_block_message(chat_id, user_id, u, reply_to_message_id=None):
+    send_message(chat_id, jail_block_message(u), reply_markup=jail_block_keyboard(u, user_id), reply_to_message_id=reply_to_message_id)
 
 def compute_arrest_chance(u):
     chance = ARREST_BASE_CHANCE
@@ -250,7 +237,7 @@ def compute_arrest_chance(u):
         chance -= MASK_ARREST_DISCOUNT
     return max(chance, MIN_ARREST_CHANCE)
 
-def arrest_user(data, user_id, chat_id, extra_text=None):
+def arrest_user(data, user_id, chat_id, extra_text=None, reply_to_message_id=None):
     u = get_user(data, user_id)
     u["jail_until"] = time.time() + JAIL_SECONDS
     text = "🚔 *شما دستگیر شدید* 🚔\n\n*⛓‍💥 برای آزاد شدن 10 دقیقه باید صبر کنید\nیا جریمه پرداخت کنید 💵*"
@@ -263,7 +250,7 @@ def arrest_user(data, user_id, chat_id, extra_text=None):
     ticket_count = u.get("items", {}).get("بلیط آزادی", 0)
     if ticket_count > 0:
         rows.append([{"text": f"🎫 استفاده از بلیط آزادی (موجودی: {ticket_count})", "callback_data": f"jail_ticket_{user_id}"}])
-    send_message(chat_id, text, reply_markup={"inline_keyboard": rows}, parse_mode="Markdown")
+    send_message(chat_id, text, reply_markup={"inline_keyboard": rows}, parse_mode="Markdown", reply_to_message_id=reply_to_message_id)
 
 # ===== تبدیل اعداد فارسی =====
 FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹"
@@ -317,27 +304,8 @@ def notify_referrer(ref_id, invitee_name, bonus):
     send_message(ref_id, text)
 
 # ===== توابع ارتباط با API بله =====
-# این متغیر توی هر ترد جدا نگه‌داری می‌شه (هر آپدیت توی یک ترد پردازش می‌شه).
-# وقتی هندل‌کردن یک پیام شروع می‌شه، آیدی همون پیام رو اینجا می‌ذاریم تا send_message
-# خودکار روی همون پیام ریپلای بزنه؛ نیازی نیست تک‌تک جاهایی که send_message صدا زده
-# می‌شه رو دستی تغییر بدیم.
-_reply_ctx = threading.local()
-
-def set_reply_context(chat_id, message_id):
-    _reply_ctx.chat_id = chat_id
-    _reply_ctx.message_id = message_id
-
-def clear_reply_context():
-    _reply_ctx.chat_id = None
-    _reply_ctx.message_id = None
-
 def send_message(chat_id, text, reply_markup=None, parse_mode=None, reply_to_message_id=None):
     url = f"{BASE_URL}/sendMessage"
-    if reply_to_message_id is None:
-        ctx_chat = getattr(_reply_ctx, "chat_id", None)
-        ctx_mid = getattr(_reply_ctx, "message_id", None)
-        if ctx_chat is not None and ctx_mid is not None and ctx_chat == chat_id:
-            reply_to_message_id = ctx_mid
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup is not None:
         payload["reply_markup"] = json.dumps(reply_markup)
@@ -346,7 +314,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None, reply_to_mes
     if reply_to_message_id:
         payload["reply_to_message_id"] = reply_to_message_id
     try:
-        return SESSION.post(url, data=payload, timeout=10)
+        return session.post(url, data=payload, timeout=10)
     except Exception as e:
         print("send_message error:", e)
         return None
@@ -359,7 +327,7 @@ def send_document(chat_id, file_path, caption=None):
             if caption:
                 payload["caption"] = caption
             files = {"document": (os.path.basename(file_path), f)}
-            return SESSION.post(url, data=payload, files=files, timeout=30)
+            return session.post(url, data=payload, files=files, timeout=30)
     except Exception as e:
         print("send_document error:", e)
         return None
@@ -374,7 +342,7 @@ def edit_message(chat_id, message_id, text, reply_markup=None, parse_mode=None):
     if parse_mode:
         payload["parse_mode"] = parse_mode
     try:
-        SESSION.post(url, data=payload, timeout=10)
+        session.post(url, data=payload, timeout=10)
     except Exception as e:
         print("edit_message error:", e)
 
@@ -385,7 +353,7 @@ def answer_callback(callback_id, text="", show_alert=True):
         payload["text"] = text
         payload["show_alert"] = show_alert
     try:
-        SESSION.post(url, data=payload, timeout=10)
+        session.post(url, data=payload, timeout=10)
     except Exception as e:
         print("answer_callback error:", e)
 
@@ -399,7 +367,7 @@ def get_sent_message_id(resp):
 
 def check_joined_channel(user_id):
     try:
-        resp = SESSION.get(f"{BASE_URL}/getChatMember", params={
+        resp = session.get(f"{BASE_URL}/getChatMember", params={
             "chat_id": f"@{JOIN_CHANNEL_USERNAME}",
             "user_id": user_id,
         }, timeout=10)
@@ -408,9 +376,9 @@ def check_joined_channel(user_id):
         return status in ("member", "administrator", "creator", "owner")
     except Exception as e:
         print("check_joined_channel error:", e)
-        return True  # در صورت خطای API، ربات کامل مسدود نشه
+        return True
 
-def join_required_reply(chat_id):
+def join_required_reply(chat_id, reply_to_message_id=None):
     keyboard = {
         "inline_keyboard": [
             [{"text": "📚 آموزش برنامه‌نویسی آرکا", "url": f"https://ble.ir/{JOIN_CHANNEL_USERNAME}"}],
@@ -421,6 +389,7 @@ def join_required_reply(chat_id):
         "🚫 برای استفاده از ربات، ابتدا باید عضو کانال زیر بشید:\n\n"
         "بعد از عضویت، دوباره دستور خودتون رو بفرستید. ✅",
         reply_markup=keyboard,
+        reply_to_message_id=reply_to_message_id,
     )
 
 # ===== متن‌های ثابت =====
@@ -874,7 +843,6 @@ def resolve_guess(data, game, guessed_side):
     edit_message(game["chat_id"], game["message_id"], text, reply_markup={"inline_keyboard": []})
 
 def resolve_guess_hide_timeout(data, game):
-    # میزبان به موقع گل رو قایم نکرد؛ حریف برنده میشه
     pot = game["bet"] * 2
     tax = round(pot * GAME_TAX_PERCENT)
     prize = pot - tax
@@ -891,7 +859,6 @@ def resolve_guess_hide_timeout(data, game):
     )
 
 def resolve_guess_pick_timeout(data, game):
-    # حریف به موقع حدس نزد؛ میزبان برنده میشه
     pot = game["bet"] * 2
     tax = round(pot * GAME_TAX_PERCENT)
     prize = pot - tax
@@ -1130,7 +1097,7 @@ def broadcast_forward(data, admin_chat_id, admin_message_id):
     count = 0
     for uid, _ in users:
         try:
-            SESSION.post(f"{BASE_URL}/forwardMessage", data={
+            session.post(f"{BASE_URL}/forwardMessage", data={
                 "chat_id": uid,
                 "from_chat_id": admin_chat_id,
                 "message_id": admin_message_id,
@@ -1275,7 +1242,7 @@ def handle_admin_menu_callback(data, cb, data_cb):
         lines = ["🏆 برترین کاربران (بر اساس خزانه):\n"]
         for i, (uid, u) in enumerate(top, start=1):
             emoji = RANK_EMOJIS[i - 1] if i <= len(RANK_EMOJIS) else f"{i}."
-            lines.append(f"{emoji} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
+            lines.append(f"{emoji} {u.get('name', 'کاربر')} — {u.get('bank', 0):,} طلا")
         send_message(chat_id, "\n".join(lines))
         return
 
@@ -1306,7 +1273,7 @@ def normalize_command(text):
     cmd = cmd.replace(f"@{BOT_USERNAME}", "")
     return cmd
 
-def create_duel_game(store_key, chat_id, user_id, u, bet, text_msg, join_prefix, cancel_prefix, extra_fields=None):
+def create_duel_game(store_key, chat_id, user_id, u, bet, text_msg, join_prefix, cancel_prefix, extra_fields=None, reply_to_message_id=None):
     data = load_data()
     game_id = next_game_id(data)
     game = {
@@ -1329,7 +1296,7 @@ def create_duel_game(store_key, chat_id, user_id, u, bet, text_msg, join_prefix,
             [{"text": "❌️ لغو", "callback_data": f"{cancel_prefix}{game_id}"}],
         ]
     }
-    resp = send_message(chat_id, text_msg, reply_markup=keyboard)
+    resp = send_message(chat_id, text_msg, reply_markup=keyboard, reply_to_message_id=reply_to_message_id)
     game["message_id"] = get_sent_message_id(resp)
     data.setdefault(store_key, {})[game_id] = game
     save_data(data)
@@ -1344,12 +1311,8 @@ def handle_message(msg):
     if not text or user_id is None:
         return
 
-    # توی گروه‌ها، جواب ربات رو ریپلای روی پیام همون کاربر می‌فرستیم تا با پیام‌های
-    # بقیه قاطی نشه؛ توی چت خصوصی لازم نیست (فقط خودشه و ربات).
-    if chat_type in ("group", "supergroup"):
-        set_reply_context(chat_id, msg.get("message_id"))
-    else:
-        clear_reply_context()
+    # برای ریپلای کردن در گروه‌ها
+    reply_id = msg["message_id"] if chat_type in ("group", "supergroup") else None
 
     data0 = load_data()
     u0 = get_user(data0, user_id)
@@ -1369,32 +1332,32 @@ def handle_message(msg):
     # ---------- /admin ----------
     if cmd == "/admin":
         if not is_admin(user_id):
-            send_message(chat_id, "⛔ شما دسترسی به پنل مدیریت ندارید.")
+            send_message(chat_id, "⛔ شما دسترسی به پنل مدیریت ندارید.", reply_to_message_id=reply_id)
             return
-        send_message(chat_id, "🛠 پنل مدیریت ربات طلا\n\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_menu_keyboard())
+        send_message(chat_id, "🛠 پنل مدیریت ربات طلا\n\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_menu_keyboard(), reply_to_message_id=reply_id)
         return
 
-    # ---------- دستور مخفی مالک: ریست کامل اطلاعات یک کاربر ----------
+    # ---------- دستور مخفی مالک ----------
     if cmd == OWNER_RESET_USER_CMD:
         if user_id != OWNER_ID:
             return
         parts = fa_to_en(text.strip()).split()
         if len(parts) != 2 or not parts[1].isdigit():
-            send_message(chat_id, f"فرمت درست: {OWNER_RESET_USER_CMD} <آیدی عددی کاربر>")
+            send_message(chat_id, f"فرمت درست: {OWNER_RESET_USER_CMD} <آیدی عددی کاربر>", reply_to_message_id=reply_id)
             return
         target_uid = str(int(parts[1]))
         data = load_data()
         if target_uid not in data or not isinstance(data[target_uid], dict):
-            send_message(chat_id, "❌ کاربری با این آیدی پیدا نشد.")
+            send_message(chat_id, "❌ کاربری با این آیدی پیدا نشد.", reply_to_message_id=reply_id)
             return
         del data[target_uid]
         save_data(data)
-        send_message(chat_id, f"✅ اطلاعات کاربر {target_uid} کامل پاک شد.")
+        send_message(chat_id, f"✅ اطلاعات کاربر {target_uid} کامل پاک شد.", reply_to_message_id=reply_id)
         return
 
     # ---------- جوین اجباری ----------
     if not is_admin(user_id) and not check_joined_channel(user_id):
-        join_required_reply(chat_id)
+        join_required_reply(chat_id, reply_to_message_id=reply_id)
         return
 
     # ---------- /start ----------
@@ -1423,12 +1386,12 @@ def handle_message(msg):
 
         u["_seen_start"] = True
         save_data(data)
-        send_message(chat_id, START_TEXT, reply_markup=START_KEYBOARD)
+        send_message(chat_id, START_TEXT, reply_markup=START_KEYBOARD, reply_to_message_id=reply_id)
         return
 
-    # ---------- /help و کمک ----------
+    # ---------- /help ----------
     if cmd == "/help" or stripped == "کمک":
-        send_message(chat_id, HELP_TEXT)
+        send_message(chat_id, HELP_TEXT, reply_to_message_id=reply_id)
         return
 
     # ---------- طلا ----------
@@ -1439,7 +1402,7 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         now = time.time()
@@ -1453,7 +1416,7 @@ def handle_message(msg):
                 f"🛠 لطفا {m} دقیقه و {s} ثانیه دیگر امتحان کنید.⚒*"
             )
             save_data(data)
-            send_message(chat_id, reply, parse_mode="Markdown")
+            send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
             return
 
         if u.get("items", {}).get("آهنربا", 0) > 0:
@@ -1472,7 +1435,7 @@ def handle_message(msg):
             f"موجودی کیف طلا شما: {u['gold']:,} طلا\n"
             f"خزانه : {u['bank']:,} طلا"
         )
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
     # ---------- دزدی ----------
@@ -1483,7 +1446,7 @@ def handle_message(msg):
 
         if is_jailed(thief):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, thief)
+            send_jail_block_message(chat_id, user_id, thief, reply_to_message_id=reply_id)
             return
 
         reply_to = msg.get("reply_to_message")
@@ -1492,6 +1455,7 @@ def handle_message(msg):
             send_message(
                 chat_id,
                 "برای دزدی، روی پیام فردی که می‌خواهید از او بدزدید ریپلای کنید و بنویسید «دزدی».",
+                reply_to_message_id=reply_id,
             )
             return
 
@@ -1500,7 +1464,7 @@ def handle_message(msg):
 
         if target_id is None or target_id == user_id:
             save_data(data)
-            send_message(chat_id, "نمی‌توانید از خودتان بدزدید!")
+            send_message(chat_id, "نمی‌توانید از خودتان بدزدید!", reply_to_message_id=reply_id)
             return
 
         target = get_user(data, target_id)
@@ -1508,7 +1472,7 @@ def handle_message(msg):
 
         if target["gold"] <= 0:
             save_data(data)
-            send_message(chat_id, "این کاربر طلایی در کیسه طلا خود ندارد!")
+            send_message(chat_id, "این کاربر طلایی در کیسه طلا خود ندارد!", reply_to_message_id=reply_id)
             return
 
         if target.get("items", {}).get("سپر", 0) > 0:
@@ -1521,13 +1485,13 @@ def handle_message(msg):
                 if thief["items"]["چاقو"] <= 0:
                     del thief["items"]["چاقو"]
                 extra += "\n🔪 چاقوی شما هم در این درگیری از بین رفت!"
-            arrest_user(data, user_id, chat_id, extra_text=extra)
+            arrest_user(data, user_id, chat_id, extra_text=extra, reply_to_message_id=reply_id)
             save_data(data)
             return
 
         arrest_chance = compute_arrest_chance(thief)
         if random.random() < arrest_chance:
-            arrest_user(data, user_id, chat_id)
+            arrest_user(data, user_id, chat_id, reply_to_message_id=reply_id)
             save_data(data)
             return
 
@@ -1541,7 +1505,7 @@ def handle_message(msg):
             f"💰طلا دزدی شده : {steal_amount:,} طلا *\n\n"
             "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"
         )
-        send_message(chat_id, reply, parse_mode="Markdown")
+        send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
         return
 
     # ---------- انتقال ----------
@@ -1553,6 +1517,7 @@ def handle_message(msg):
             send_message(
                 chat_id,
                 "برای انتقال طلا، روی پیام شخص مورد نظر ریپلای کنید و بنویسید «انتقال [مبلغ]»",
+                reply_to_message_id=reply_id,
             )
             return
 
@@ -1560,11 +1525,11 @@ def handle_message(msg):
         target_id = target_user.get("id")
 
         if target_id is None or target_id == user_id:
-            send_message(chat_id, "نمی‌توانید به خودتان طلا انتقال دهید!")
+            send_message(chat_id, "نمی‌توانید به خودتان طلا انتقال دهید!", reply_to_message_id=reply_id)
             return
 
         if amount <= 0:
-            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.")
+            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.", reply_to_message_id=reply_id)
             return
 
         data = load_data()
@@ -1573,7 +1538,7 @@ def handle_message(msg):
 
         if is_jailed(sender):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, sender)
+            send_jail_block_message(chat_id, user_id, sender, reply_to_message_id=reply_id)
             return
 
         target = get_user(data, target_id)
@@ -1581,7 +1546,7 @@ def handle_message(msg):
 
         if sender["gold"] < amount:
             save_data(data)
-            send_message(chat_id, "❌ موجودی کیسه طلای شما برای این انتقال کافی نیست.")
+            send_message(chat_id, "❌ موجودی کیسه طلای شما برای این انتقال کافی نیست.", reply_to_message_id=reply_id)
             return
 
         sender["gold"] -= amount
@@ -1592,7 +1557,7 @@ def handle_message(msg):
             f"✅ مبلغ {amount:,} طلا از کیسه طلای شما به {target['name']} منتقل شد.\n\n"
             f"کیسه طلای شما: {sender['gold']:,} طلا"
         )
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
     # ---------- زیر مجموعه ----------
@@ -1602,7 +1567,7 @@ def handle_message(msg):
         update_name(u, user)
         bonus = get_referral_bonus(data)
         save_data(data)
-        send_message(chat_id, referral_message_text(user_id, bonus))
+        send_message(chat_id, referral_message_text(user_id, bonus), reply_to_message_id=reply_id)
         return
 
     # ---------- کیف ----------
@@ -1621,7 +1586,7 @@ def handle_message(msg):
             "🎒آیتم‌ها:\n"
             f"{items_text_for(u)}"
         )
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
     # ---------- روزانه ----------
@@ -1632,7 +1597,7 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         now = time.time()
@@ -1646,7 +1611,7 @@ def handle_message(msg):
                 f"لطفا {h} ساعت و {m} دقیقه {s} ثانیه دیگر تلاش کنید."
             )
             save_data(data)
-            send_message(chat_id, reply)
+            send_message(chat_id, reply, reply_to_message_id=reply_id)
             return
 
         amount = random.randint(300, 800)
@@ -1659,21 +1624,21 @@ def handle_message(msg):
             f"کیسه طلا: {u['gold']:,} طلا\n"
             f"خزانه: {u['bank']:,} طلا*"
         )
-        send_message(chat_id, reply, parse_mode="Markdown")
+        send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
         return
 
     # ---------- فروشگاه ----------
     if stripped == "فروشگاه":
-        send_message(chat_id, SHOP_TEXT)
+        send_message(chat_id, SHOP_TEXT, reply_to_message_id=reply_id)
         return
 
-    # ---------- خرید [نام آیتم] ----------
+    # ---------- خرید ----------
     if stripped.startswith("خرید"):
         parts = stripped.split(maxsplit=1)
         item_name = parts[1].strip() if len(parts) > 1 else None
 
         if not item_name or item_name not in ITEMS:
-            send_message(chat_id, "❌ همچین آیتمی در فروشگاه وجود ندارد.")
+            send_message(chat_id, "❌ همچین آیتمی در فروشگاه وجود ندارد.", reply_to_message_id=reply_id)
             return
 
         data = load_data()
@@ -1682,7 +1647,7 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         price = ITEMS[item_name]["price"]
@@ -1695,7 +1660,7 @@ def handle_message(msg):
                 "برای خرید فقط از کیسه طلا استفاده می‌شود؛ اگر پول در خزانه دارید "
                 "ابتدا با نوشتن «برداشت [عدد]» آن را به کیسه طلا منتقل کنید."
             )
-            send_message(chat_id, reply)
+            send_message(chat_id, reply, reply_to_message_id=reply_id)
             return
 
         u["gold"] -= price
@@ -1707,10 +1672,10 @@ def handle_message(msg):
             f"کیسه طلا: {u['gold']:,} طلا\n"
             f"خزانه: {u['bank']:,} طلا"
         )
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
-    # ---------- دوز [مبلغ] ----------
+    # ---------- دوز ----------
     dooz_amount = extract_amount(text, "دوز")
     if dooz_amount is not None:
         data = load_data()
@@ -1719,12 +1684,12 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         if dooz_amount <= 0 or u["gold"] < dooz_amount:
             save_data(data)
-            send_message(chat_id, "❌ موجودی کافی برای شروع دوز ندارید.")
+            send_message(chat_id, "❌ موجودی کافی برای شروع دوز ندارید.", reply_to_message_id=reply_id)
             return
 
         u["gold"] -= dooz_amount
@@ -1735,10 +1700,11 @@ def handle_message(msg):
             dooz_waiting_text(game_placeholder),
             "dooz_join_", "dooz_cancel_",
             extra_fields={"board": [EMPTY_CELL] * 9, "symbols": {}, "turn": None},
+            reply_to_message_id=reply_id,
         )
         return
 
-    # ---------- کازینو [مبلغ] ----------
+    # ---------- کازینو ----------
     casino_amount = extract_amount(text, "کازینو")
     if casino_amount is not None:
         data = load_data()
@@ -1747,12 +1713,12 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         if casino_amount <= 0 or u["gold"] < casino_amount:
             save_data(data)
-            send_message(chat_id, "❌ موجودی کافی برای شروع کازینو ندارید.")
+            send_message(chat_id, "❌ موجودی کافی برای شروع کازینو ندارید.", reply_to_message_id=reply_id)
             return
 
         u["gold"] -= casino_amount
@@ -1764,10 +1730,10 @@ def handle_message(msg):
             "*•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••*\n"
             "(تا 5 دقیقه دیگر شرکت کننده‌ای نباشد کازینو باطل می‌شود)"
         )
-        create_duel_game("_casino_games", chat_id, user_id, u, casino_amount, text_msg, "casino_join_", "casino_cancel_")
+        create_duel_game("_casino_games", chat_id, user_id, u, casino_amount, text_msg, "casino_join_", "casino_cancel_", reply_to_message_id=reply_id)
         return
 
-    # ---------- سنگ کاغذ قیچی [مبلغ] ----------
+    # ---------- سنگ کاغذ قیچی ----------
     rps_amount = extract_amount(text, "سنگ کاغذ قیچی")
     if rps_amount is not None:
         data = load_data()
@@ -1776,12 +1742,12 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         if rps_amount <= 0 or u["gold"] < rps_amount:
             save_data(data)
-            send_message(chat_id, "❌ موجودی کافی برای شروع بازی ندارید.")
+            send_message(chat_id, "❌ موجودی کافی برای شروع بازی ندارید.", reply_to_message_id=reply_id)
             return
 
         u["gold"] -= rps_amount
@@ -1796,10 +1762,11 @@ def handle_message(msg):
         create_duel_game(
             "_rps_games", chat_id, user_id, u, rps_amount, text_msg,
             "rps_join_", "rps_cancel_", extra_fields={"choices": {}},
+            reply_to_message_id=reply_id,
         )
         return
 
-    # ---------- گل یا پوچ [مبلغ] ----------
+    # ---------- گل یا پوچ ----------
     guess_amount = extract_amount(text, "گل یا پوچ")
     if guess_amount is not None:
         data = load_data()
@@ -1808,12 +1775,12 @@ def handle_message(msg):
 
         if is_jailed(u):
             save_data(data)
-            send_jail_block_message(chat_id, user_id, u)
+            send_jail_block_message(chat_id, user_id, u, reply_to_message_id=reply_id)
             return
 
         if guess_amount <= 0 or u["gold"] < guess_amount:
             save_data(data)
-            send_message(chat_id, "❌ موجودی کافی برای شروع بازی ندارید.")
+            send_message(chat_id, "❌ موجودی کافی برای شروع بازی ندارید.", reply_to_message_id=reply_id)
             return
 
         u["gold"] -= guess_amount
@@ -1828,10 +1795,11 @@ def handle_message(msg):
         create_duel_game(
             "_guess_games", chat_id, user_id, u, guess_amount, text_msg,
             "guess_join_", "guess_cancel_", extra_fields={"flower_hand": None},
+            reply_to_message_id=reply_id,
         )
         return
 
-    # ---------- رتبه ----------
+    # ---------- رتبه (بر اساس خزانه) ----------
     if stripped == "رتبه":
         data = load_data()
         users = all_real_users(data)
@@ -1846,16 +1814,16 @@ def handle_message(msg):
             group_users.sort(key=lambda x: x[1].get("bank", 0), reverse=True)
             group_top = group_users[:10]
 
-            lines.append("🏆 ۱۰ نفر برتر گروه:")
+            lines.append("🏆 ۱۰ نفر برتر گروه (بر اساس خزانه):")
             for i, (uid, u) in enumerate(group_top):
-                lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
+                lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} — {u.get('bank', 0):,} طلا")
             lines.append("")
 
-        lines.append("🌍 ۱۰ نفر برتر کل ربات:")
+        lines.append("🌍 ۱۰ نفر برتر کل ربات (بر اساس خزانه):")
         for i, (uid, u) in enumerate(global_top):
-            lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} - {u.get('bank', 0):,}")
+            lines.append(f"{RANK_EMOJIS[i]} {u.get('name', 'کاربر')} — {u.get('bank', 0):,} طلا")
 
-        send_message(chat_id, "\n".join(lines))
+        send_message(chat_id, "\n".join(lines), reply_to_message_id=reply_id)
         return
 
     # ---------- واریز ----------
@@ -1866,7 +1834,7 @@ def handle_message(msg):
         update_name(u, user)
 
         if deposit_amount <= 0:
-            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.")
+            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.", reply_to_message_id=reply_id)
             return
 
         if u["gold"] >= deposit_amount:
@@ -1881,7 +1849,7 @@ def handle_message(msg):
         else:
             save_data(data)
             reply = "❌ موجودی کافی برای واریز ندارید."
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
     # ---------- برداشت ----------
@@ -1892,7 +1860,7 @@ def handle_message(msg):
         update_name(u, user)
 
         if withdraw_amount <= 0:
-            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.")
+            send_message(chat_id, "❌ عدد وارد شده معتبر نیست.", reply_to_message_id=reply_id)
             return
 
         if u["bank"] >= withdraw_amount:
@@ -1907,7 +1875,7 @@ def handle_message(msg):
         else:
             save_data(data)
             reply = "❌ موجودی خزانه کافی نیست."
-        send_message(chat_id, reply)
+        send_message(chat_id, reply, reply_to_message_id=reply_id)
         return
 
 # ===== پردازش دکمه‌های شیشه‌ای =====
@@ -1968,7 +1936,6 @@ def handle_jail_ticket(data, cb, target_user_id):
     answer_callback(cb_id, "آزاد شدید!")
 
 def handle_callback(cb):
-    clear_reply_context()
     cb_id = cb["id"]
     chat_id = cb["message"]["chat"]["id"]
     user = cb.get("from", {})
@@ -2066,45 +2033,56 @@ def handle_callback(cb):
 
     save_data(data)
 
-# ===== حلقه اصلی (Long Polling) =====
-# هر آپدیت رو توی یک ترد جدا از یک استخر ترد پردازش می‌کنیم تا وقتی چند نفر هم‌زمان
-# با ربات کار می‌کنن، پیام یک نفر منتظر تموم‌شدن پردازش پیام قبلی نمونه (سرعت خیلی بیشتر می‌شه).
-EXECUTOR = ThreadPoolExecutor(max_workers=16)
-
-def process_update(update):
-    # کل پردازش هر آپدیت (شامل load_data/save_data) با قفل انجام می‌شه تا وقتی چند
-    # آپدیت هم‌زمان اومدن، تغییرات کاربرها روی هم overwrite نشن و دیتا خراب نشه؛
-    # ولی چون توی یک ترد جدا اجرا می‌شه، حلقه‌ی اصلی معطل تموم شدنش نمی‌مونه و
-    # بلافاصله می‌ره سراغ گرفتن آپدیت‌های بعدی.
-    with DATA_LOCK:
+# ===== wrapper های thread-safe =====
+def process_message(msg):
+    with data_lock:
         try:
-            if "message" in update:
-                handle_message(update["message"])
-            elif "callback_query" in update:
-                handle_callback(update["callback_query"])
+            handle_message(msg)
         except Exception as e:
-            print("process_update error:", e)
+            print("handle_message error:", e)
 
+def process_callback(cb):
+    with data_lock:
+        try:
+            handle_callback(cb)
+        except Exception as e:
+            print("handle_callback error:", e)
+
+def process_expired_games():
+    with data_lock:
+        try:
+            check_expired_games()
+        except Exception as e:
+            print("check_expired_games error:", e)
+
+# ===== حلقه اصلی (Long Polling) =====
 def main():
+    global last_game_check
     print("ربات طلا در حال اجراست...")
     offset = None
     while True:
-        check_expired_games()
+        now = time.time()
+        if now - last_game_check > 30:
+            threading.Thread(target=process_expired_games, daemon=True).start()
+            last_game_check = now
 
-        params = {"timeout": 30}
+        params = {"timeout": 15}
         if offset:
             params["offset"] = offset
         try:
-            resp = SESSION.get(f"{BASE_URL}/getUpdates", params=params, timeout=35)
+            resp = session.get(f"{BASE_URL}/getUpdates", params=params, timeout=20)
             updates = resp.json().get("result", [])
         except Exception as e:
             print("getUpdates error:", e)
-            time.sleep(3)
+            time.sleep(2)
             continue
 
         for update in updates:
             offset = update["update_id"] + 1
-            EXECUTOR.submit(process_update, update)
+            if "message" in update:
+                threading.Thread(target=process_message, args=(update["message"],), daemon=True).start()
+            elif "callback_query" in update:
+                threading.Thread(target=process_callback, args=(update["callback_query"],), daemon=True).start()
 
 if __name__ == "__main__":
     main()
