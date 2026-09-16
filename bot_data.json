@@ -1,0 +1,87 @@
+{
+    "324157864": {
+        "gold": 0,
+        "bank": 134,
+        "xp": 1,
+        "last_claim": 1789574581.2245567,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "پشتیبان آرکا✔"
+    },
+    "_groups": {
+        "5160441108": [
+            324157864,
+            1393593897,
+            890352247,
+            994865959,
+            731718932
+        ]
+    },
+    "1393593897": {
+        "gold": 0,
+        "bank": 2620,
+        "xp": 3,
+        "last_claim": 1789574216.1484003,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "ᗰᝪᕼᗩᗰᗰᗩᗞ"
+    },
+    "731718932": {
+        "gold": 184,
+        "bank": 0,
+        "xp": 0,
+        "last_claim": 0,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "𝒦ℐ𝒜𝒩"
+    },
+    "_admin_pending": {
+        "324157864": "backup_password"
+    },
+    "890352247": {
+        "gold": 0,
+        "bank": 0,
+        "xp": 0,
+        "last_claim": 0,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "erfan4524",
+        "_seen_start": true
+    },
+    "994865959": {
+        "gold": 0,
+        "bank": 111,
+        "xp": 1,
+        "last_claim": 1789574410.5183759,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "F.O.P"
+    },
+    "1518829426": {
+        "gold": 1380,
+        "bank": 0,
+        "xp": 0,
+        "last_claim": 0,
+        "last_daily": 0,
+        "jail_until": 0,
+        "referred_by": null,
+        "referrals": [],
+        "items": {},
+        "name": "کاربر"
+    }
+}
