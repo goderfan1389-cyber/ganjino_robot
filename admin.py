@@ -4,7 +4,7 @@ import requests
 import datetime
 import json
 import os
-from utils import send_message, answer_callback, admin_panel_keyboard
+from utils import send_message, answer_callback, delete_message, copy_message, admin_panel_keyboard
 from database import get_conn, get_user, update_user
 from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME, BACKUP_PASSWORD
 
@@ -28,9 +28,7 @@ def handle_admin_callback(cb, conn, u):
         total_users = cur.fetchone()[0]
         cur.execute("SELECT SUM(gold), SUM(bank) FROM users")
         sums = cur.fetchone()
-        total_gold = sums[0] if sums[0] else 0
-        total_bank = sums[1] if sums[1] else 0
-        send_message(chat_id, f"📊 آمار ربات:\n\n👥 تعداد کاربران: {total_users}\n🪙 مجموع کیسه طلا: {total_gold:,}\n🏦 مجموع خزانه: {total_bank:,}")
+        send_message(chat_id, f"📊 آمار ربات:\n\n👥 تعداد کاربران: {total_users}\n🪙 مجموع کیسه طلا: {sums[0] or 0:,}\n🏦 مجموع خزانه: {sums[1] or 0:,}")
 
     elif data == "admin_top_users":
         cur = conn.cursor()
@@ -46,12 +44,32 @@ def handle_admin_callback(cb, conn, u):
         send_message(chat_id, "🔐 رمز عبور رو برای دریافت فایل بکاپ بفرست.")
 
     elif data == "admin_bc_group":
-        admin_states[user_id] = {'step': 'bc_msg'}
-        send_message(chat_id, "📤 پیام خود را بفرستید تا در گروه GANJINO_GAP ارسال شود.\n(برای لغو: انصراف)")
+        admin_states[user_id] = {'step': 'bc_wait_msg', 'data': {}}
+        send_message(chat_id, "📤 پیام خود را بفرستید. (عکس، متن، ویدیو و...)\nبرای لغو: انصراف")
+
+    elif data == "admin_bc_confirm":
+        if user_id in admin_states and admin_states[user_id].get('step') == 'bc_confirm':
+            msg_id = admin_states[user_id]['data']['msg_id']
+            copy_message(f"@{MAIN_GROUP_USERNAME}", chat_id, msg_id)
+            send_message(chat_id, "✅ پیام با موفقیت در گروه ارسال شد.")
+            del admin_states[user_id]
+
+    elif data == "admin_bc_cancel":
+        if user_id in admin_states: del admin_states[user_id]
+        send_message(chat_id, "❌ ارسال لغو شد.")
 
     elif data == "admin_event":
-        admin_states[user_id] = {'step': 'msg', 'data': {}}
-        send_message(chat_id, "📸 عکس/فیلم/متن مسابقه را بفرستید:")
+        admin_states[user_id] = {'step': 'ev_wait_msg', 'data': {}}
+        send_message(chat_id, "📸 عکس/فیلم/متن مسابقه را بفرستید (عکس همراه با کپشن هم قابل قبوله):")
+
+    elif data == "admin_ev_confirm":
+        if user_id in admin_states and admin_states[user_id].get('step') == 'ev_confirm':
+            admin_states[user_id]['step'] = 'num_opts'
+            send_message(chat_id, "تعداد گزینه‌ها را وارد کنید (مثلا 3):")
+
+    elif data == "admin_ev_cancel":
+        if user_id in admin_states: del admin_states[user_id]
+        send_message(chat_id, "❌ ساخت مسابقه لغو شد.")
 
     elif data == "admin_end_event":
         cur = conn.cursor()
@@ -93,13 +111,11 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             send_message(chat_id, "❌ عملیات لغو شد.", reply_id)
             return True
 
-        # --- رمز بکاپ ---
         if state['step'] == 'backup_password':
             if text != BACKUP_PASSWORD:
                 send_message(chat_id, "❌ رمز عبور اشتباهه.", reply_id)
                 del admin_states[user_id]
                 return True
-            
             cur = conn.cursor()
             cur.execute("SELECT * FROM users")
             rows = cur.fetchall()
@@ -121,11 +137,20 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             del admin_states[user_id]
             return True
 
-        # --- مراحل قرعه کشی مسابقه ---
-        if state['step'] == 'msg':
+        # --- پیام همگانی ---
+        if state['step'] == 'bc_wait_msg':
             state['data']['msg_id'] = msg['message_id']
-            state['step'] = 'num_opts'
-            send_message(chat_id, "تعداد گزینه‌ها را وارد کنید (مثلا 3):")
+            state['step'] = 'bc_confirm'
+            kb = {"inline_keyboard": [[{"text": "✅ تایید و ارسال", "callback_data": "admin_bc_confirm"}], [{"text": "❌ لغو", "callback_data": "admin_bc_cancel"}]]}
+            send_message(chat_id, "آیا از ارسال این پیام مطمئن هستید؟", reply_markup=kb)
+            return True
+
+        # --- مراحل قرعه کشی مسابقه ---
+        if state['step'] == 'ev_wait_msg':
+            state['data']['msg_id'] = msg['message_id']
+            state['step'] = 'ev_confirm'
+            kb = {"inline_keyboard": [[{"text": "✅ تایید و ادامه", "callback_data": "admin_ev_confirm"}], [{"text": "❌ لغو", "callback_data": "admin_ev_cancel"}]]}
+            send_message(chat_id, "پیام ثبت شد. ادامه میدهیم؟", reply_markup=kb)
             return True
 
         if state['step'] == 'num_opts':
@@ -148,17 +173,20 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
         if state['step'] == 'time':
             try:
                 h, m = map(int, text.split(':'))
-                now = datetime.datetime.now()
+                # تنظیم زمان بر اساس ساعت ایران (UTC+3:30)
+                now = datetime.datetime.utcnow() + datetime.timedelta(minutes=210)
                 deadline = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if deadline < now: deadline += datetime.timedelta(days=1)
                 
                 cur = conn.cursor()
-                cur.execute("INSERT INTO events (admin_chat_id, admin_msg_id, options, deadline, status) VALUES (%s, %s, %s, %s, 'active') RETURNING event_id", 
-                            (chat_id, state['data']['msg_id'], state['data']['options'], deadline.timestamp()))
+                # کپی پیام به گروه و گرفتن آیدی پیام گروه
+                resp = copy_message(f"@{MAIN_GROUP_USERNAME}", chat_id, state['data']['msg_id'])
+                group_msg_id = resp.json().get("result", {}).get("message_id")
+                
+                cur.execute("INSERT INTO events (admin_chat_id, admin_msg_id, group_msg_id, options, deadline, status) VALUES (%s, %s, %s, %s, %s, 'active') RETURNING event_id", 
+                            (chat_id, state['data']['msg_id'], group_msg_id, state['data']['options'], deadline.timestamp()))
                 event_id = cur.fetchone()[0]
                 conn.commit()
-                
-                requests.post(f"{BASE_URL}/forwardMessage", data={"chat_id": f"@{MAIN_GROUP_USERNAME}", "from_chat_id": chat_id, "message_id": state['data']['msg_id']})
                 
                 keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"vote_{event_id}_{i}"}] for i, opt in enumerate(state['data']['options'])]}
                 send_message(f"@{MAIN_GROUP_USERNAME}", "⚽ مسابقه پیش‌بینی! انتخاب کنید:", reply_markup=keyboard)
@@ -207,8 +235,10 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             win_idx = state['data']['win_idx']
             
             cur = conn.cursor()
-            cur.execute("SELECT options FROM events WHERE event_id=%s", (event_id,))
-            options = cur.fetchone()[0]
+            cur.execute("SELECT options, group_msg_id FROM events WHERE event_id=%s", (event_id,))
+            row = cur.fetchone()
+            options = row[0]
+            group_msg_id = row[1]
             win_option = options[win_idx]
             
             cur.execute("SELECT user_id FROM event_votes WHERE event_id=%s AND choice=%s", (event_id, win_option))
@@ -229,9 +259,13 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             cur.execute("UPDATE events SET status='finished', winning_option=%s WHERE event_id=%s", (win_option, event_id))
             conn.commit()
             
+            # پاک کردن پیام مسابقه از گروه
+            if group_msg_id:
+                delete_message(f"@{MAIN_GROUP_USERNAME}", group_msg_id)
+            
             send_message(f"@{MAIN_GROUP_USERNAME}", f"🏁 مسابقه تمام شد!\nگزینه برنده: {win_option}\nجوایز به برندگان داده شد (نام‌ها فاش نمیشه).")
             del admin_states[user_id]
-            send_message(chat_id, "✅ جوایز با موفقیت توزیع شد.")
+            send_message(chat_id, "✅ جوایز با موفقیت توزیع شد و پیام مسابقه پاک شد.")
             return True
 
         # --- مراحل پنل ادمین ---
@@ -243,51 +277,34 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             target_id, amount = int(parts[0]), int(parts[1])
             target = get_user(target_id, conn)
             if state['step'] == "add_balance":
-                target['gold'] += amount
-                msg = f"✅ مبلغ {amount} طلا به کیسه {target['name']} اضافه شد."
+                target['gold'] += amount; msg = f"✅ مبلغ {amount} طلا به کیسه {target['name']} اضافه شد."
             elif state['step'] == "remove_balance":
-                target['gold'] = max(0, target['gold'] - amount)
-                msg = f"✅ مبلغ {amount} طلا از کیسه {target['name']} کم شد."
+                target['gold'] = max(0, target['gold'] - amount); msg = f"✅ مبلغ {amount} طلا از کیسه {target['name']} کم شد."
             elif state['step'] == "add_bank":
-                target['bank'] += amount
-                msg = f"✅ مبلغ {amount} طلا به خزانه {target['name']} اضافه شد."
+                target['bank'] += amount; msg = f"✅ مبلغ {amount} طلا به خزانه {target['name']} اضافه شد."
             elif state['step'] == "remove_bank":
-                target['bank'] = max(0, target['bank'] - amount)
-                msg = f"✅ مبلغ {amount} طلا از خزانه {target['name']} کم شد."
-            
+                target['bank'] = max(0, target['bank'] - amount); msg = f"✅ مبلغ {amount} طلا از خزانه {target['name']} کم شد."
             update_user(target_id, {"gold": target['gold'], "bank": target['bank']}, conn)
             send_message(chat_id, msg, reply_id)
             del admin_states[user_id]
             return True
 
         if state['step'] == "user_info":
-            if not text.isdigit():
-                send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id)
-                return True
+            if not text.isdigit(): send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id); return True
             target_id = int(text)
             target = get_user(target_id, conn)
-            jail_status = "🔒 زندان" if target['jail_until'] > time.time() else "🔓 آزاد"
-            send_message(chat_id, f"🔍 اطلاعات کاربر:\n\n👤 نام: {target['name']}\n🆔 آیدی: {target_id}\n🪙 کیسه: {target['gold']:,}\n🏦 خزانه: {target['bank']:,}\n🚔 وضعیت: {jail_status}", reply_id)
+            send_message(chat_id, f"🔍 اطلاعات کاربر:\n\n👤 نام: {target['name']}\n🆔 آیدی: {target_id}\n🪙 کیسه: {target['gold']:,}\n🏦 خزانه: {target['bank']:,}\n🚔 وضعیت: {'🔒 زندان' if target['jail_until'] > time.time() else '🔓 آزاد'}", reply_id)
             del admin_states[user_id]
             return True
 
         if state['step'] == "free_jail":
-            if not text.isdigit():
-                send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id)
-                return True
+            if not text.isdigit(): send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id); return True
             target_id = int(text)
             update_user(target_id, {"jail_until": 0}, conn)
             send_message(chat_id, f"✅ کاربر {target_id} از زندان آزاد شد.", reply_id)
             del admin_states[user_id]
             return True
 
-        if state['step'] == 'bc_msg':
-            requests.post(f"{BASE_URL}/forwardMessage", data={"chat_id": f"@{MAIN_GROUP_USERNAME}", "from_chat_id": chat_id, "message_id": msg["message_id"]})
-            del admin_states[user_id]
-            send_message(chat_id, "✅ پیام در گروه ارسال شد.", reply_id)
-            return True
-
-    # --- دستورات متنی ادمین ---
     if text == "/admin" or text == "پنل":
         send_message(chat_id, "🛠 پنل مدیریت ربات طلا\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
         return True
