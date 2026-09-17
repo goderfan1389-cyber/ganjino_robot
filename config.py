@@ -33,3 +33,19 @@ ITEMS = {
     "آهنربا": {"emoji": "🧲", "price": 100},
     "بلیط آزادی": {"emoji": "🎫", "price": 47},
 }
+
+# ===== تنظیمات بازی‌ها =====
+GAME_TAX_PERCENT = 0.05
+CASINO_TAX_PERCENT = 0.10
+
+DOOZ_WAIT_TIMEOUT = 7 * 60
+CASINO_WAIT_TIMEOUT = 5 * 60
+RPS_WAIT_TIMEOUT = 5 * 60
+GUESS_WAIT_TIMEOUT = 5 * 60
+TURN_TIMEOUT = 30
+
+EMPTY_CELL = "⬜️"
+X_MARK = "❌"
+O_MARK = "⭕"
+RPS_NAMES = {"rock": "🪨 سنگ", "paper": "📄 کاغذ", "scissors": "✂️ قیچی"}
+RPS_BEATS = {"rock": "scissors", "scissors": "paper", "paper": "rock"}
