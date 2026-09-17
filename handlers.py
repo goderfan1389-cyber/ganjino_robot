@@ -348,12 +348,17 @@ def process_callback(cb):
             parts = data.split("_")
             event_id, opt_idx = int(parts[1]), int(parts[2])
             cur = conn.cursor()
-            cur.execute("SELECT options, deadline FROM events WHERE event_id=%s AND status='active'", (event_id,))
+            cur.execute("SELECT options, deadline, status FROM events WHERE event_id=%s", (event_id,))
             row = cur.fetchone()
             if not row: answer_callback(cb_id, "مسابقه پیدا نشد.", True); release_conn(conn); return
-            options, deadline = row
-            if time.time() > deadline:
-                answer_callback(cb_id, "زمان مسابقه به پایان رسیده!", True); release_conn(conn); return
+            options, deadline, status = row
+            
+            if status != 'active' or time.time() > deadline:
+                answer_callback(cb_id, "⏰ زمان مسابقه به پایان رسیده!", True)
+                if status == 'active':
+                    edit_message(chat_id, msg_id, "⏰ زمان مسابقه به پایان رسید!\nانتخاب‌ها قفل شدند.", reply_markup={"inline_keyboard": []})
+                release_conn(conn); return
+            
             choice = options[opt_idx]
             cur.execute("INSERT INTO event_votes (event_id, user_id, choice) VALUES (%s, %s, %s) ON CONFLICT (user_id, event_id) DO UPDATE SET choice=%s", (event_id, user_id, choice, choice))
             conn.commit()
