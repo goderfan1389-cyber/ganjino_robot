@@ -1,5 +1,6 @@
 import time
 import random
+import requests
 from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount
 from database import get_conn, release_conn, get_user, update_user
 from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS
