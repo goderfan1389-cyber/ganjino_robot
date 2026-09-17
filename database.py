@@ -28,6 +28,7 @@ def init_db():
             bank INT DEFAULT 0,
             xp INT DEFAULT 0,
             last_claim FLOAT DEFAULT 0,
+            last_daily FLOAT DEFAULT 0,
             jail_until FLOAT DEFAULT 0,
             last_steal FLOAT DEFAULT 0,
             steal_warnings INT DEFAULT 0,
@@ -35,6 +36,12 @@ def init_db():
             seen_start BOOLEAN DEFAULT FALSE
         )
     ''')
+    # اضافه کردن ستون last_daily اگه جدول قدیمی هست
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily FLOAT DEFAULT 0")
+    except:
+        pass
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS events (
             event_id SERIAL PRIMARY KEY,
@@ -57,7 +64,6 @@ def init_db():
             UNIQUE(user_id, event_id)
         )
     ''')
-    # جدول جدید بازی‌ها
     cur.execute('''
         CREATE TABLE IF NOT EXISTS games (
             game_id SERIAL PRIMARY KEY,
