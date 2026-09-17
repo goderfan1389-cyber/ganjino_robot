@@ -37,7 +37,7 @@ ITEMS = {
 }
 
 # ===== تنظیمات بازی‌ها =====
-GAME_TAX_PERCENT = 0.05
+GAME_TAX_PERCENT = 0.10
 CASINO_TAX_PERCENT = 0.10
 
 DOOZ_WAIT_TIMEOUT = 7 * 60
