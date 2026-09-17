@@ -4,7 +4,7 @@ import random
 import psycopg2
 import psycopg2.extras
 from utils import send_message, edit_message, answer_callback, delete_message
-from database import get_conn, get_user, update_user
+from database import get_conn, release_conn, get_user, update_user
 from config import (GAME_TAX_PERCENT, CASINO_TAX_PERCENT, TURN_TIMEOUT, 
                     DOOZ_WAIT_TIMEOUT, CASINO_WAIT_TIMEOUT, RPS_WAIT_TIMEOUT, GUESS_WAIT_TIMEOUT,
                     EMPTY_CELL, X_MARK, O_MARK, RPS_NAMES, RPS_BEATS)
@@ -75,7 +75,6 @@ def handle_game_callback(cb, conn, u):
         update_user(game['host_id'], {"gold": host['gold'] + game['bet']}, conn)
         cur.execute("UPDATE games SET status = 'cancelled' WHERE game_id = %s", (game_id,))
         conn.commit()
-        # پاک کردن پیام بازی از گروه
         delete_message(chat_id, msg_id)
         answer_callback(cb_id, "بازی لغو شد و طلای شما برگشت.")
 
@@ -96,8 +95,12 @@ def _start_dooz(conn, cb, game, u):
     cur.execute("UPDATE games SET status = 'active', opponent_id = %s, opponent_name = %s, data = %s, deadline = %s WHERE game_id = %s", 
                 (u['user_id'], u['name'], json.dumps(game_data), time.time() + TURN_TIMEOUT, game['game_id']))
     conn.commit()
-    text = f"❌⭕ بازی دوز شروع شد ⭕❌\n👤 {game['host_name']} ({symbols[str(game['host_id'])]})\n👤 {u['name']} ({symbols[str(u['user_id'])]})\n💰 مبلغ شرط: {game['bet']:,} طلا\n\nنوبت X هست"
-    keyboard = {"inline_keyboard": [[{"text": EMPTY_CELL, "callback_data": f"dooz_move_{game['game_id']}_{i}"} for i in range(3)] for _ in range(3)]}
+    
+    starter_name = game['host_name'] if symbols[str(game['host_id'])] == X_MARK else u['name']
+    text = f"❌⭕ بازی دوز شروع شد ⭕❌\n👤 {game['host_name']} ({symbols[str(game['host_id'])]})\n👤 {u['name']} ({symbols[str(u['user_id'])]})\n💰 مبلغ شرط: {game['bet']:,} طلا\n\nنوبت {starter_name} ({X_MARK}) هست"
+    
+    # باگ کیبورد دوز اینجا حل شد
+    keyboard = {"inline_keyboard": [[{"text": EMPTY_CELL, "callback_data": f"dooz_move_{game['game_id']}_{row*3+col}"} for col in range(3)] for row in range(3)]}
     edit_message(chat_id, msg_id, text, reply_markup=keyboard)
     answer_callback(cb_id, "بازی شروع شد!")
 
@@ -138,11 +141,16 @@ def _handle_dooz_move(cb, conn, game, u, idx):
         answer_callback(cb_id, "بازی تمام شد.")
     else:
         game_data['turn'] = O_MARK if game_data['turn'] == X_MARK else X_MARK
+        next_id = game['host_id'] if game_data['symbols'][str(game['host_id'])] == game_data['turn'] else game['opponent_id']
+        next_name = game['host_name'] if next_id == game['host_id'] else game['opponent_name']
+        
         cur = conn.cursor()
         cur.execute("UPDATE games SET data = %s, deadline = %s WHERE game_id = %s", (json.dumps(game_data), time.time() + TURN_TIMEOUT, game['game_id']))
         conn.commit()
-        keyboard = {"inline_keyboard": [[{"text": game_data['board'][i], "callback_data": f"dooz_move_{game['game_id']}_{i}"} for i in range(3)] for _ in range(3)]}
-        edit_message(chat_id, msg_id, f"نوبت {game_data['turn']}", reply_markup=keyboard)
+        
+        text = f"❌⭕ بازی دوز ⭕❌\n👤 {game['host_name']} ({game_data['symbols'][str(game['host_id'])]})\n👤 {game['opponent_name']} ({game_data['symbols'][str(game['opponent_id'])]})\n\nنوبت {next_name} ({game_data['turn']}) هست"
+        keyboard = {"inline_keyboard": [[{"text": game_data['board'][row*3+col], "callback_data": f"dooz_move_{game['game_id']}_{row*3+col}"} for col in range(3)] for row in range(3)]}
+        edit_message(chat_id, msg_id, text, reply_markup=keyboard)
         answer_callback(cb_id)
 
 def _resolve_casino(conn, cb, game, u):
@@ -201,7 +209,7 @@ def _handle_rps_choice(cb, conn, game, u, choice):
             win_user = get_user(win_id, conn)
             prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
             update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
-            text = f"🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا"
+            text = f"🏆 {win_user['name']} برنده شد!\n{game['host_name']}: {RPS_NAMES[host_ch]}\n{game['opponent_name']}: {RPS_NAMES[opp_ch]}\n💰 جایزه: {prize:,} طلا"
         cur = conn.cursor()
         cur.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
         conn.commit()
@@ -257,33 +265,41 @@ def _handle_guess_pick(cb, conn, game, u, side):
     cur = conn.cursor()
     cur.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
     conn.commit()
-    text = f"🌸 گل در دست {'چپ' if game_data['flower_hand']=='left' else 'راست'} بود!\n🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا"
+    
+    host_hand = "چپ" if game_data['flower_hand']=='left' else "راست"
+    opp_hand = "چپ" if side=='left' else "راست"
+    text = f"🌸 {game['host_name']} گل رو در دست {host_hand} قایم کرد!\n{game['opponent_name']} دست {opp_hand} رو انتخاب کرد.\n\n🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا"
     edit_message(chat_id, msg_id, text, reply_markup={"inline_keyboard": []})
     answer_callback(cb_id, "بازی تمام شد.")
 
 def check_expired_games():
     conn = get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    now = time.time()
-    
-    cur.execute("SELECT * FROM games WHERE status = 'waiting' AND created_at < %s", (now - DOOZ_WAIT_TIMEOUT,))
-    for game in cur.fetchall():
-        host = get_user(game['host_id'], conn)
-        update_user(game['host_id'], {"gold": host['gold'] + game['bet']}, conn)
-        cur2 = conn.cursor()
-        cur2.execute("UPDATE games SET status = 'cancelled' WHERE game_id = %s", (game['game_id'],))
-        delete_message(game['chat_id'], game['message_id'])
-    conn.commit()
+    if not conn: return
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        now = time.time()
+        
+        cur.execute("SELECT * FROM games WHERE status = 'waiting' AND created_at < %s", (now - DOOZ_WAIT_TIMEOUT,))
+        for game in cur.fetchall():
+            host = get_user(game['host_id'], conn)
+            update_user(game['host_id'], {"gold": host['gold'] + game['bet']}, conn)
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE games SET status = 'cancelled' WHERE game_id = %s", (game['game_id'],))
+            delete_message(game['chat_id'], game['message_id'])
+        conn.commit()
 
-    cur.execute("SELECT * FROM games WHERE status IN ('active', 'hiding', 'guessing') AND deadline < %s", (now,))
-    for game in cur.fetchall():
-        win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id']
-        if win_id:
-            win_user = get_user(win_id, conn)
-            prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
-            update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
-            edit_message(game['chat_id'], game['message_id'], f"⏰ زمان تمام شد!\n🏆 {win_user['name']} برنده شد!")
-        cur2 = conn.cursor()
-        cur2.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
-    conn.commit()
-    release_conn(conn)
+        cur.execute("SELECT * FROM games WHERE status IN ('active', 'hiding', 'guessing') AND deadline < %s", (now,))
+        for game in cur.fetchall():
+            win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id']
+            if win_id:
+                win_user = get_user(win_id, conn)
+                prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
+                update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
+                edit_message(game['chat_id'], game['message_id'], f"⏰ زمان تمام شد!\n🏆 {win_user['name']} برنده شد!")
+            cur2 = conn.cursor()
+            cur2.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
+        conn.commit()
+    except Exception as e:
+        print("Game Timeout Error:", e)
+    finally:
+        release_conn(conn)
