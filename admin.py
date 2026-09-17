@@ -6,7 +6,7 @@ import json
 import os
 from utils import send_message, answer_callback, admin_panel_keyboard
 from database import get_conn, get_user, update_user
-from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME
+from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME, BACKUP_PASSWORD
 
 def is_admin(user_id): return user_id in ADMIN_IDS
 
@@ -30,36 +30,20 @@ def handle_admin_callback(cb, conn, u):
         sums = cur.fetchone()
         total_gold = sums[0] if sums[0] else 0
         total_bank = sums[1] if sums[1] else 0
-        send_message(chat_id, f"📊 *آمار ربات:*\n\n👥 تعداد کاربران: {total_users}\n🪙 مجموع کیسه طلا: {total_gold:,}\n🏦 مجموع خزانه: {total_bank:,}")
+        send_message(chat_id, f"📊 آمار ربات:\n\n👥 تعداد کاربران: {total_users}\n🪙 مجموع کیسه طلا: {total_gold:,}\n🏦 مجموع خزانه: {total_bank:,}")
 
     elif data == "admin_top_users":
         cur = conn.cursor()
         cur.execute("SELECT name, bank FROM users ORDER BY bank DESC LIMIT 10")
         top = cur.fetchall()
-        text = "🏆 *برترین کاربران (بر اساس خزانه):*\n\n"
+        text = "🏆 برترین کاربران (بر اساس خزانه):\n\n"
         for i, row in enumerate(top, 1):
             text += f"{i}. {row[0]} — {row[1]:,} طلا\n"
         send_message(chat_id, text)
 
     elif data == "admin_backup":
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users")
-        rows = cur.fetchall()
-        colnames = [desc[0] for desc in cur.description]
-        sql_lines = ["-- Bot PostgreSQL Backup", "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"]
-        for row in rows:
-            values = []
-            for val in row:
-                if isinstance(val, dict): val = json.dumps(val)
-                if val is None: values.append("NULL")
-                elif isinstance(val, (int, float)): values.append(str(val))
-                else: values.append(f"'{str(val).replace(chr(39), chr(39)+chr(39))}'")
-            sql_lines.append(f"INSERT INTO users ({', '.join(colnames)}) VALUES ({', '.join(values)});")
-        with open("backup.sql", "w", encoding="utf-8") as f:
-            f.write("\n".join(sql_lines))
-        from utils import send_document
-        send_document(chat_id, "backup.sql", "📥 فایل بکاپ دیتابیس (SQL)")
-        if os.path.exists("backup.sql"): os.remove("backup.sql")
+        admin_states[user_id] = {'step': 'backup_password'}
+        send_message(chat_id, "🔐 رمز عبور رو برای دریافت فایل بکاپ بفرست.")
 
     elif data == "admin_bc_group":
         admin_states[user_id] = {'step': 'bc_msg'}
@@ -81,7 +65,6 @@ def handle_admin_callback(cb, conn, u):
         admin_states[user_id] = {'step': 'end_select', 'data': {}}
 
     else:
-        # دکمه‌هایی که نیاز به ورود متن دارند (مثل افزایش طلا)
         prompts = {
             "admin_add_balance": ("add_balance", "آیدی عددی کاربر و مقدار طلا رو با فاصله بفرست.\nمثال: 324157864 500"),
             "admin_remove_balance": ("remove_balance", "آیدی عددی کاربر و مقدار طلا رو با فاصله بفرست.\nمثال: 324157864 500"),
@@ -108,6 +91,34 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
         if text == "انصراف":
             del admin_states[user_id]
             send_message(chat_id, "❌ عملیات لغو شد.", reply_id)
+            return True
+
+        # --- رمز بکاپ ---
+        if state['step'] == 'backup_password':
+            if text != BACKUP_PASSWORD:
+                send_message(chat_id, "❌ رمز عبور اشتباهه.", reply_id)
+                del admin_states[user_id]
+                return True
+            
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM users")
+            rows = cur.fetchall()
+            colnames = [desc[0] for desc in cur.description]
+            sql_lines = ["-- Bot PostgreSQL Backup", "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"]
+            for row in rows:
+                values = []
+                for val in row:
+                    if isinstance(val, dict): val = json.dumps(val)
+                    if val is None: values.append("NULL")
+                    elif isinstance(val, (int, float)): values.append(str(val))
+                    else: values.append(f"'{str(val).replace(chr(39), chr(39)+chr(39))}'")
+                sql_lines.append(f"INSERT INTO users ({', '.join(colnames)}) VALUES ({', '.join(values)});")
+            with open("backup.sql", "w", encoding="utf-8") as f:
+                f.write("\n".join(sql_lines))
+            from utils import send_document
+            send_document(chat_id, "backup.sql", "📥 فایل بکاپ دیتابیس (SQL)")
+            if os.path.exists("backup.sql"): os.remove("backup.sql")
+            del admin_states[user_id]
             return True
 
         # --- مراحل قرعه کشی مسابقه ---
@@ -223,7 +234,7 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             send_message(chat_id, "✅ جوایز با موفقیت توزیع شد.")
             return True
 
-        # --- مراحل پنل ادمین (افزایش/کاهش/اطلاعات) ---
+        # --- مراحل پنل ادمین ---
         if state['step'] in ["add_balance", "remove_balance", "add_bank", "remove_bank"]:
             parts = text.split()
             if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
@@ -256,7 +267,7 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             target_id = int(text)
             target = get_user(target_id, conn)
             jail_status = "🔒 زندان" if target['jail_until'] > time.time() else "🔓 آزاد"
-            send_message(chat_id, f"🔍 *اطلاعات کاربر:*\n\n👤 نام: {target['name']}\n🆔 آیدی: {target_id}\n🪙 کیسه: {target['gold']:,}\n🏦 خزانه: {target['bank']:,}\n🚔 وضعیت: {jail_status}", reply_id)
+            send_message(chat_id, f"🔍 اطلاعات کاربر:\n\n👤 نام: {target['name']}\n🆔 آیدی: {target_id}\n🪙 کیسه: {target['gold']:,}\n🏦 خزانه: {target['bank']:,}\n🚔 وضعیت: {jail_status}", reply_id)
             del admin_states[user_id]
             return True
 
@@ -278,7 +289,7 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
 
     # --- دستورات متنی ادمین ---
     if text == "/admin" or text == "پنل":
-        send_message(chat_id, "🛠 *پنل مدیریت ربات طلا*\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
+        send_message(chat_id, "🛠 پنل مدیریت ربات طلا\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
         return True
 
     return False
