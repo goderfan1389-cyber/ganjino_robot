@@ -7,14 +7,12 @@ from handlers import process_message, process_callback
 
 def safe_process_message(msg):
     try:
-        print(f"📥 Received message from {msg.get('from', {}).get('id')}")
         process_message(msg)
     except Exception as e:
         print("🔴 ERROR in process_message:", e)
 
 def safe_process_callback(cb):
     try:
-        print(f"📥 Received button click from {cb.get('from', {}).get('id')}")
         process_callback(cb)
     except Exception as e:
         print("🔴 ERROR in process_callback:", e)
@@ -38,12 +36,8 @@ def main():
                 continue
                 
             updates = data.get("result", [])
-            
-            if not updates:
-                print("⏳ No new updates, waiting...") # این پیام نشون میده ربات زنده‌ست
-                
         except Exception as e:
-            print("🔴 Polling error:", e)
+            print("Polling error:", e)
             time.sleep(2)
             continue
 
