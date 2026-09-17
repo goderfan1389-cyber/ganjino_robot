@@ -29,10 +29,6 @@ HELP_TEXT = """📖 راهنمای کامل ربات طلا 🪙
 🔸 فروشگاه — دیدن لیست آیتم‌ها
 🔸 خرید [نام آیتم] — خرید آیتم با طلای کیسه
 
-👥 زیرمجموعه‌گیری
-🔸 زیر مجموعه — دریافت لینک دعوت اختصاصی
-🔸 دکمه «زیرمجموعه‌های من» — دیدن لیست دعوت‌شده‌ها
-
 🏆 رتبه‌بندی
 🔸 رتبه — ۱۰ نفر برتر گروه و ۱۰ نفر برتر کل ربات (بر اساس خزانه)
 
@@ -60,12 +56,10 @@ def process_message(msg):
         conn = get_conn()
         u = get_user(user_id, conn)
         
-        # آپدیت اسم کاربر
         fname = user.get("first_name") or user.get("username") or "کاربر"
         if u['name'] != fname:
             update_user(user_id, {"name": fname}, conn)
 
-        # دستور مخفی ریست کاربر (فقط مالک یا ادمین)
         if text.startswith(OWNER_RESET_USER_CMD) and user_id in ADMIN_IDS:
             parts = text.split()
             if len(parts) == 2 and parts[1].isdigit():
@@ -77,14 +71,12 @@ def process_message(msg):
             release_conn(conn)
             return
 
-        # هندل کردن دستورات ادمین
         if handle_admin_commands(msg, u, conn, reply_id):
             release_conn(conn)
             return
 
         stripped = text.strip()
         
-        # اگر تو زندانه، بقیه دستورات کار نکنن جز /start و کیف
         if is_jailed(u) and stripped not in ["/start", "کیف", "/help", "کمک"]:
             remaining = u['jail_until'] - time.time()
             _, m, s = format_seconds(remaining)
@@ -125,7 +117,9 @@ def process_message(msg):
         elif stripped == "روزانه":
             now = time.time()
             if now - u.get('last_daily', 0) < 86400:
-                send_message(chat_id, "🔴 هنوز وقت دریافت جایزه روزانه نرسیده!", reply_to_message_id=reply_id); release_conn(conn); return
+                remaining = 86400 - (now - u.get('last_daily', 0))
+                h, m, s = format_seconds(remaining)
+                send_message(chat_id, f"⏳ *شما قبلاً جایزه روزانه را گرفته‌اید!*\n\nلطفا {h} ساعت و {m} دقیقه و {s} ثانیه دیگر تلاش کنید.", parse_mode="Markdown", reply_to_message_id=reply_id); release_conn(conn); return
             amount = random.randint(300, 800)
             update_user(user_id, {"gold": u['gold'] + amount, "last_daily": now}, conn)
             send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount} طلا!*", parse_mode="Markdown", reply_to_message_id=reply_id)
@@ -146,7 +140,6 @@ def process_message(msg):
             target_id = reply_to.get("from", {}).get("id")
             if target_id == user_id:
                 send_message(chat_id, "نمی‌توانید از خودتان بدزدید!", reply_to_message_id=reply_id); release_conn(conn); return
-            
             now = time.time()
             if now - u['last_steal'] < STEAL_COOLDOWN:
                 warnings = u['steal_warnings'] + 1
@@ -156,7 +149,6 @@ def process_message(msg):
                     send_message(chat_id, f"🚔 پافشاری کردی! زندان ۱۰ دقیقه.", reply_markup=keyboard, reply_to_message_id=reply_id)
                 else:
                     update_user(user_id, {"steal_warnings": warnings}, conn)
-                    # محاسبه زمان دقیق باقیمانده
                     remaining_sec = int(STEAL_COOLDOWN - (now - u['last_steal']))
                     send_message(chat_id, f"⏳ *هنوز زمان دزدی نرسیده!*\n\nحدود {remaining_sec} ثانیه دیگه باید صبر کنی.\nاخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", parse_mode="Markdown", reply_to_message_id=reply_id)
                 release_conn(conn); return
@@ -169,7 +161,6 @@ def process_message(msg):
             update_user(target_id, {"gold": target['gold'] - steal_amount}, conn)
             update_user(user_id, {"gold": u['gold'] + steal_amount, "last_steal": now, "steal_warnings": 0}, conn)
             
-            # متن خفن دزدی موفق
             reply = (
                 "*🥷 دزدی با موفقیت انجام شد 🥷                    \n \n"
                 f"💰طلا دزدی شده : {steal_amount:,} طلا *\n\n"
@@ -177,30 +168,6 @@ def process_message(msg):
             )
             send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
 
-        elif stripped.startswith("دوز "):
-            amount = extract_amount(text, "دوز")
-            if amount and amount > 0 and u['gold'] >= amount:
-                update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "dooz", chat_id, user_id, u['name'], amount, f"❌⭕ بازی دوز شروع شد!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
-
-        elif stripped.startswith("کازینو "):
-            amount = extract_amount(text, "کازینو")
-            if amount and amount > 0 and u['gold'] >= amount:
-                update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "casino", chat_id, user_id, u['name'], amount, f"🎰 کازینو جدید!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
-
-        elif stripped.startswith("سنگ کاغذ قیچی "):
-            amount = extract_amount(text, "سنگ کاغذ قیچی")
-            if amount and amount > 0 and u['gold'] >= amount:
-                update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "rps", chat_id, user_id, u['name'], amount, f"✊✋✌️ سنگ‌کاغذقیچی!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
-
-        elif stripped.startswith("گل یا پوچ "):
-            amount = extract_amount(text, "گل یا پوچ")
-            if amount and amount > 0 and u['gold'] >= amount:
-                update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "guess", chat_id, user_id, u['name'], amount, f"🌸 گل یا پوچ!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
-        
         elif stripped.startswith("انتقال "):
             amount = extract_amount(text, "انتقال")
             reply_to = msg.get("reply_to_message")
@@ -257,6 +224,31 @@ def process_message(msg):
             update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
             send_message(chat_id, f"💸 مبلغ {amount} طلا از خزانه برداشت شد.\n\nکیسه طلا: {u['gold']:,}\nخزانه: {u['bank']:,}", reply_to_message_id=reply_id)
 
+        # --- بازی ها ---
+        elif stripped.startswith("دوز "):
+            amount = extract_amount(text, "دوز")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "dooz", chat_id, user_id, u['name'], amount, f"❌⭕ بازی دوز شروع شد!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("کازینو "):
+            amount = extract_amount(text, "کازینو")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "casino", chat_id, user_id, u['name'], amount, f"🎰 کازینو جدید!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("سنگ کاغذ قیچی "):
+            amount = extract_amount(text, "سنگ کاغذ قیچی")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "rps", chat_id, user_id, u['name'], amount, f"✊✋✌️ سنگ‌کاغذقیچی!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("گل یا پوچ "):
+            amount = extract_amount(text, "گل یا پوچ")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "guess", chat_id, user_id, u['name'], amount, f"🌸 گل یا پوچ!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
         release_conn(conn)
     except Exception as e:
         print("🔴 ERROR in process_message:", e)
@@ -277,6 +269,11 @@ def process_callback(cb):
             release_conn(conn)
             return
 
+        if data.startswith(("dooz_", "casino_", "rps_", "guess_")):
+            handle_game_callback(cb, conn, u)
+            release_conn(conn)
+            return
+
         if data.startswith("jail_pay_"):
             target_id = int(data.replace("jail_pay_", ""))
             if user_id != target_id: answer_callback(cb_id, "این دکمه برای شما نیست.", True); release_conn(conn); return
@@ -287,12 +284,6 @@ def process_callback(cb):
             else:
                 answer_callback(cb_id, "❌ طلا کافی ندارید!", True)
 
-        # هندل دکمه‌های بازی‌ها
-        if data.startswith("dooz_") or data.startswith("casino_") or data.startswith("rps_") or data.startswith("guess_"):
-            handle_game_callback(cb, conn, u)
-            release_conn(conn)
-            return
-        
         elif data.startswith("jail_wait_"):
             target_id = int(data.replace("jail_wait_", ""))
             if user_id != target_id:
