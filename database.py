@@ -48,12 +48,6 @@ def init_db():
             status TEXT DEFAULT 'active'
         )
     ''')
-    # اضافه کردن ستون group_msg_id اگه جدول قدیمی هست
-    try:
-        cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS group_msg_id BIGINT")
-    except:
-        pass
-        
     cur.execute('''
         CREATE TABLE IF NOT EXISTS event_votes (
             vote_id SERIAL PRIMARY KEY,
@@ -61,6 +55,24 @@ def init_db():
             user_id BIGINT,
             choice TEXT,
             UNIQUE(user_id, event_id)
+        )
+    ''')
+    # جدول جدید بازی‌ها
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS games (
+            game_id SERIAL PRIMARY KEY,
+            game_type TEXT,
+            chat_id BIGINT,
+            message_id BIGINT,
+            host_id BIGINT,
+            host_name TEXT,
+            opponent_id BIGINT,
+            opponent_name TEXT,
+            bet INT,
+            status TEXT DEFAULT 'waiting',
+            data JSONB DEFAULT '{}',
+            created_at FLOAT,
+            deadline FLOAT
         )
     ''')
     conn.commit()
@@ -89,7 +101,7 @@ def update_user(user_id, fields, conn=None):
     values = []
     for k, v in fields.items():
         if isinstance(v, (dict, list)):
-            v = extras.Json(v) # رفع باگ آپدیت آیتم‌ها در PostgreSQL
+            v = extras.Json(v)
         set_clauses.append(f"{k} = %s")
         values.append(v)
     values.append(user_id)
