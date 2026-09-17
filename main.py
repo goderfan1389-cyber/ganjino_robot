@@ -4,23 +4,31 @@ from utils import session
 from config import BASE_URL
 from database import init_db
 from handlers import process_message, process_callback
+from games import check_expired_games
 
 def safe_process_message(msg):
-    try:
-        process_message(msg)
-    except Exception as e:
-        print("🔴 ERROR in process_message:", e)
+    try: process_message(msg)
+    except Exception as e: print("🔴 ERROR:", e)
 
 def safe_process_callback(cb):
-    try:
-        process_callback(cb)
-    except Exception as e:
-        print("🔴 ERROR in process_callback:", e)
+    try: process_callback(cb)
+    except Exception as e: print("🔴 ERROR:", e)
+
+def timeout_loop():
+    while True:
+        try:
+            check_expired_games()
+        except Exception as e:
+            print("Game Timeout Error:", e)
+        time.sleep(15) # هر ۱۵ ثانیه یکبار چک میکنه
 
 def main():
     print("Initializing Database...")
     init_db()
     print("Bot is running...")
+    
+    # استارت ترد تایم‌اوت بازی‌ها
+    threading.Thread(target=timeout_loop, daemon=True).start()
     
     offset = None
     while True:
@@ -28,16 +36,8 @@ def main():
         if offset: params["offset"] = offset
         try:
             resp = session.get(f"{BASE_URL}/getUpdates", params=params, timeout=20)
-            data = resp.json()
-            
-            if not data.get("ok"):
-                print("🔴 BALE API ERROR:", data)
-                time.sleep(3)
-                continue
-                
-            updates = data.get("result", [])
-        except Exception as e:
-            print("Polling error:", e)
+            updates = resp.json().get("result", [])
+        except:
             time.sleep(2)
             continue
 
