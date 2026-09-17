@@ -1,6 +1,8 @@
 import time
 import json
 import random
+import psycopg2
+import psycopg2.extras
 from utils import send_message, edit_message, answer_callback, delete_message
 from database import get_conn, get_user, update_user
 from config import (GAME_TAX_PERCENT, CASINO_TAX_PERCENT, TURN_TIMEOUT, 
