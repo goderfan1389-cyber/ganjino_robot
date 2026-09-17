@@ -4,7 +4,7 @@ import requests
 from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount
 from database import get_conn, release_conn, get_user, update_user
 from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS
-from admin import handle_admin_commands
+from admin import handle_admin_commands, handle_admin_callback
 
 def process_message(msg):
     chat_id = msg["chat"]["id"]
