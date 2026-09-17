@@ -36,18 +36,13 @@ def init_db():
             seen_start BOOLEAN DEFAULT FALSE
         )
     ''')
-    # اضافه کردن ستون last_daily اگه جدول قدیمی هست
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily FLOAT DEFAULT 0")
-    except:
-        pass
-
     cur.execute('''
         CREATE TABLE IF NOT EXISTS events (
             event_id SERIAL PRIMARY KEY,
             admin_chat_id BIGINT,
             admin_msg_id BIGINT,
             group_msg_id BIGINT,
+            buttons_msg_id BIGINT,
             options TEXT[],
             deadline FLOAT,
             prize TEXT,
@@ -55,6 +50,12 @@ def init_db():
             status TEXT DEFAULT 'active'
         )
     ''')
+    # اضافه کردن ستون جدید به جدول قدیمی
+    try:
+        cur.execute("ALTER TABLE events ADD COLUMN IF NOT EXISTS buttons_msg_id BIGINT")
+    except:
+        pass
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS event_votes (
             vote_id SERIAL PRIMARY KEY,
