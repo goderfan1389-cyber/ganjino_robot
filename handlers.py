@@ -286,6 +286,9 @@ def process_message(msg):
     except Exception as e:
         print("🔴 ERROR in process_message:", e)
 
+    finally:
+        if conn: release_conn(conn)
+
 def process_callback(cb):
     try:
         cb_id = cb["id"]
@@ -359,3 +362,6 @@ def process_callback(cb):
         release_conn(conn)
     except Exception as e:
         print("🔴 ERROR in process_callback:", e)
+
+    finally:
+        if conn: release_conn(conn)
