@@ -3,13 +3,98 @@ import random
 import requests
 import datetime
 import json
-from utils import send_message, admin_panel_keyboard
+import os
+from utils import send_message, answer_callback, admin_panel_keyboard
 from database import get_conn, get_user, update_user
 from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME
 
 def is_admin(user_id): return user_id in ADMIN_IDS
 
 admin_states = {}
+
+def handle_admin_callback(cb, conn, u):
+    cb_id = cb["id"]
+    chat_id = cb["message"]["chat"]["id"]
+    user_id = cb.get("from", {}).get("id")
+    data = cb.get("data", "")
+    
+    if not is_admin(user_id):
+        answer_callback(cb_id, "⛔ دسترسی ندارید.", True)
+        return
+
+    if data == "admin_stats":
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM users")
+        total_users = cur.fetchone()[0]
+        cur.execute("SELECT SUM(gold), SUM(bank) FROM users")
+        sums = cur.fetchone()
+        total_gold = sums[0] if sums[0] else 0
+        total_bank = sums[1] if sums[1] else 0
+        send_message(chat_id, f"📊 *آمار ربات:*\n\n👥 تعداد کاربران: {total_users}\n🪙 مجموع کیسه طلا: {total_gold:,}\n🏦 مجموع خزانه: {total_bank:,}")
+
+    elif data == "admin_top_users":
+        cur = conn.cursor()
+        cur.execute("SELECT name, bank FROM users ORDER BY bank DESC LIMIT 10")
+        top = cur.fetchall()
+        text = "🏆 *برترین کاربران (بر اساس خزانه):*\n\n"
+        for i, row in enumerate(top, 1):
+            text += f"{i}. {row[0]} — {row[1]:,} طلا\n"
+        send_message(chat_id, text)
+
+    elif data == "admin_backup":
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users")
+        rows = cur.fetchall()
+        colnames = [desc[0] for desc in cur.description]
+        sql_lines = ["-- Bot PostgreSQL Backup", "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"]
+        for row in rows:
+            values = []
+            for val in row:
+                if isinstance(val, dict): val = json.dumps(val)
+                if val is None: values.append("NULL")
+                elif isinstance(val, (int, float)): values.append(str(val))
+                else: values.append(f"'{str(val).replace(chr(39), chr(39)+chr(39))}'")
+            sql_lines.append(f"INSERT INTO users ({', '.join(colnames)}) VALUES ({', '.join(values)});")
+        with open("backup.sql", "w", encoding="utf-8") as f:
+            f.write("\n".join(sql_lines))
+        from utils import send_document
+        send_document(chat_id, "backup.sql", "📥 فایل بکاپ دیتابیس (SQL)")
+        if os.path.exists("backup.sql"): os.remove("backup.sql")
+
+    elif data == "admin_bc_group":
+        admin_states[user_id] = {'step': 'bc_msg'}
+        send_message(chat_id, "📤 پیام خود را بفرستید تا در گروه GANJINO_GAP ارسال شود.\n(برای لغو: انصراف)")
+
+    elif data == "admin_event":
+        admin_states[user_id] = {'step': 'msg', 'data': {}}
+        send_message(chat_id, "📸 عکس/فیلم/متن مسابقه را بفرستید:")
+
+    elif data == "admin_end_event":
+        cur = conn.cursor()
+        cur.execute("SELECT event_id, options FROM events WHERE status='active'")
+        events = cur.fetchall()
+        if not events:
+            answer_callback(cb_id, "مسابقه فعالی وجود ندارد.", True)
+            return
+        txt = "مسابقات فعال:\n" + "\n".join([f"آیدی {e[0]}: {e[1]}" for e in events])
+        send_message(chat_id, txt + "\nآیدی مسابقه مورد نظر را بفرستید:")
+        admin_states[user_id] = {'step': 'end_select', 'data': {}}
+
+    else:
+        # دکمه‌هایی که نیاز به ورود متن دارند (مثل افزایش طلا)
+        prompts = {
+            "admin_add_balance": ("add_balance", "آیدی عددی کاربر و مقدار طلا رو با فاصله بفرست.\nمثال: 324157864 500"),
+            "admin_remove_balance": ("remove_balance", "آیدی عددی کاربر و مقدار طلا رو با فاصله بفرست.\nمثال: 324157864 500"),
+            "admin_add_bank": ("add_bank", "آیدی عددی کاربر و مقدار طلا برای خزانه رو بفرست.\nمثال: 324157864 500"),
+            "admin_remove_bank": ("remove_bank", "آیدی عددی کاربر و مقدار طلا برای کسر از خزانه رو بفرست.\nمثال: 324157864 500"),
+            "admin_user_info": ("user_info", "آیدی عددی کاربر رو بفرست تا اطلاعاتش رو ببینی.\nمثال: 324157864"),
+            "admin_free_jail": ("free_jail", "آیدی عددی کاربری که می‌خوای از زندان آزادش کنی رو بفرست.\nمثال: 324157864")
+        }
+        if data in prompts:
+            action, prompt_text = prompts[data]
+            admin_states[user_id] = {'step': action}
+            send_message(chat_id, prompt_text + "\n\n(برای لغو: انصراف)")
+
 
 def handle_admin_commands(msg, u, conn, reply_id=None):
     chat_id = msg["chat"]["id"]
@@ -25,6 +110,7 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             send_message(chat_id, "❌ عملیات لغو شد.", reply_id)
             return True
 
+        # --- مراحل قرعه کشی مسابقه ---
         if state['step'] == 'msg':
             state['data']['msg_id'] = msg['message_id']
             state['step'] = 'num_opts'
@@ -137,41 +223,62 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             send_message(chat_id, "✅ جوایز با موفقیت توزیع شد.")
             return True
 
-    # --- دستورات عادی ادمین ---
-    if text == "/admin" or text == "پنل":
-        send_message(chat_id, "🛠 پنل مدیریت ربات طلا\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
-        return True
-
-    if text.startswith("خزانه "):
-        try:
+        # --- مراحل پنل ادمین (افزایش/کاهش/اطلاعات) ---
+        if state['step'] in ["add_balance", "remove_balance", "add_bank", "remove_bank"]:
             parts = text.split()
-            target_id, amount = int(parts[1]), int(parts[2])
-            update_user(target_id, {"bank": get_user(target_id, conn)['bank'] + amount}, conn)
-            send_message(chat_id, f"✅ {amount} طلا به خزانه کاربر {target_id} اضافه شد.")
-        except:
-            send_message(chat_id, "فرمت: خزانه [آیدی] [مقدار]")
-        return True
+            if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+                send_message(chat_id, "❌ فرمت اشتباه است. مثال: 324157864 500", reply_id)
+                return True
+            target_id, amount = int(parts[0]), int(parts[1])
+            target = get_user(target_id, conn)
+            if state['step'] == "add_balance":
+                target['gold'] += amount
+                msg = f"✅ مبلغ {amount} طلا به کیسه {target['name']} اضافه شد."
+            elif state['step'] == "remove_balance":
+                target['gold'] = max(0, target['gold'] - amount)
+                msg = f"✅ مبلغ {amount} طلا از کیسه {target['name']} کم شد."
+            elif state['step'] == "add_bank":
+                target['bank'] += amount
+                msg = f"✅ مبلغ {amount} طلا به خزانه {target['name']} اضافه شد."
+            elif state['step'] == "remove_bank":
+                target['bank'] = max(0, target['bank'] - amount)
+                msg = f"✅ مبلغ {amount} طلا از خزانه {target['name']} کم شد."
+            
+            update_user(target_id, {"gold": target['gold'], "bank": target['bank']}, conn)
+            send_message(chat_id, msg, reply_id)
+            del admin_states[user_id]
+            return True
 
-    if text == "بکاپ":
-        import os
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users")
-        rows = cur.fetchall()
-        colnames = [desc[0] for desc in cur.description]
-        sql_lines = ["-- Bot PostgreSQL Backup", "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"]
-        for row in rows:
-            values = []
-            for val in row:
-                if isinstance(val, dict): val = json.dumps(val)
-                if val is None: values.append("NULL")
-                elif isinstance(val, (int, float)): values.append(str(val))
-                else: values.append(f"'{str(val).replace(chr(39), chr(39)+chr(39))}'")
-            sql_lines.append(f"INSERT INTO users ({', '.join(colnames)}) VALUES ({', '.join(values)});")
-        with open("backup.sql", "w", encoding="utf-8") as f:
-            f.write("\n".join(sql_lines))
-        from utils import send_document
-        send_document(chat_id, "backup.sql", "📥 فایل بکاپ دیتابیس (SQL)")
-        if os.path.exists("backup.sql"): os.remove("backup.sql")
+        if state['step'] == "user_info":
+            if not text.isdigit():
+                send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id)
+                return True
+            target_id = int(text)
+            target = get_user(target_id, conn)
+            jail_status = "🔒 زندان" if target['jail_until'] > time.time() else "🔓 آزاد"
+            send_message(chat_id, f"🔍 *اطلاعات کاربر:*\n\n👤 نام: {target['name']}\n🆔 آیدی: {target_id}\n🪙 کیسه: {target['gold']:,}\n🏦 خزانه: {target['bank']:,}\n🚔 وضعیت: {jail_status}", reply_id)
+            del admin_states[user_id]
+            return True
+
+        if state['step'] == "free_jail":
+            if not text.isdigit():
+                send_message(chat_id, "❌ لطفا فقط آیدی عددی بفرست.", reply_id)
+                return True
+            target_id = int(text)
+            update_user(target_id, {"jail_until": 0}, conn)
+            send_message(chat_id, f"✅ کاربر {target_id} از زندان آزاد شد.", reply_id)
+            del admin_states[user_id]
+            return True
+
+        if state['step'] == 'bc_msg':
+            requests.post(f"{BASE_URL}/forwardMessage", data={"chat_id": f"@{MAIN_GROUP_USERNAME}", "from_chat_id": chat_id, "message_id": msg["message_id"]})
+            del admin_states[user_id]
+            send_message(chat_id, "✅ پیام در گروه ارسال شد.", reply_id)
+            return True
+
+    # --- دستورات متنی ادمین ---
+    if text == "/admin" or text == "پنل":
+        send_message(chat_id, "🛠 *پنل مدیریت ربات طلا*\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
         return True
 
     return False
