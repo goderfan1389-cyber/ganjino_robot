@@ -166,7 +166,9 @@ def process_message(msg):
             steal_amount = min(random.randint(30, 100), target['gold'])
             update_user(target_id, {"gold": target['gold'] - steal_amount}, conn)
             update_user(user_id, {"gold": u['gold'] + steal_amount, "last_steal": now, "steal_warnings": 0}, conn)
-            send_message(chat_id, f"🥷 دزدی موفق! {steal_amount} طلا گرفتی.", reply_to_message_id=reply_id)
+            send_message(chat_id, f"🥷 دزدی با موفقیت انجام شد 🥷\n                    
+💰طلا دزدی شده : {steal_amount} طلا \n
+••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••", reply_to_message_id=reply_id)
 
         elif stripped.startswith("انتقال "):
             amount = extract_amount(text, "انتقال")
