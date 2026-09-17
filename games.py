@@ -130,7 +130,6 @@ def _handle_dooz_move(cb, conn, game, u, idx):
             text = "🤝 بازی مساوی شد! مبلغ شرط برگشت داده شد."
         else:
             win_id = game['host_id'] if game_data['symbols'][str(game['host_id'])] == winner else game['opponent_id']
-            # اصلاح محاسبات مالیات
             pot = game['bet'] * 2
             tax = round(pot * GAME_TAX_PERCENT)
             prize = pot - tax
@@ -161,7 +160,6 @@ def _resolve_casino(conn, cb, game, u):
     winner_id = game['host_id'] if winner_is_host else u['user_id']
     winner_name = game['host_name'] if winner_is_host else u['name']
     
-    # اصلاح محاسبات مالیات
     pot = game['bet'] * 2
     tax = round(pot * CASINO_TAX_PERCENT)
     prize = pot - tax
@@ -212,7 +210,6 @@ def _handle_rps_choice(cb, conn, game, u, choice):
             host_wins = RPS_BEATS[host_ch] == opp_ch
             win_id = game['host_id'] if host_wins else game['opponent_id']
             win_user = get_user(win_id, conn)
-            # اصلاح محاسبات مالیات
             pot = game['bet'] * 2
             tax = round(pot * GAME_TAX_PERCENT)
             prize = pot - tax
@@ -267,7 +264,6 @@ def _handle_guess_pick(cb, conn, game, u, side):
     correct = side == game_data['flower_hand']
     win_id = game['opponent_id'] if correct else game['host_id']
     win_user = get_user(win_id, conn)
-    # اصلاح محاسبات مالیات
     pot = game['bet'] * 2
     tax = round(pot * GAME_TAX_PERCENT)
     prize = pot - tax
@@ -304,7 +300,6 @@ def check_expired_games():
             win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id']
             if win_id:
                 win_user = get_user(win_id, conn)
-                # اصلاح محاسبات مالیات برای تایم‌اوت
                 pot = game['bet'] * 2
                 tax = round(pot * GAME_TAX_PERCENT)
                 prize = pot - tax
