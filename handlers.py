@@ -4,6 +4,7 @@ from utils import send_message, answer_callback, edit_message, is_jailed, extrac
 from database import get_conn, release_conn, get_user, update_user
 from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD, ADMIN_IDS
 from admin import handle_admin_commands, handle_admin_callback
+from games import create_duel_game, handle_game_callback
 
 START_TEXT = """🤖 به ربات اقتصاد-بازی خوش آمدید!
 برای دیدن دستورات، /help را بزنید."""
@@ -176,6 +177,30 @@ def process_message(msg):
             )
             send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
 
+        elif stripped.startswith("دوز "):
+            amount = extract_amount(text, "دوز")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "dooz", chat_id, user_id, u['name'], amount, f"❌⭕ بازی دوز شروع شد!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("کازینو "):
+            amount = extract_amount(text, "کازینو")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "casino", chat_id, user_id, u['name'], amount, f"🎰 کازینو جدید!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("سنگ کاغذ قیچی "):
+            amount = extract_amount(text, "سنگ کاغذ قیچی")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "rps", chat_id, user_id, u['name'], amount, f"✊✋✌️ سنگ‌کاغذقیچی!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+
+        elif stripped.startswith("گل یا پوچ "):
+            amount = extract_amount(text, "گل یا پوچ")
+            if amount and amount > 0 and u['gold'] >= amount:
+                update_user(user_id, {"gold": u['gold'] - amount}, conn)
+                create_duel_game(conn, "guess", chat_id, user_id, u['name'], amount, f"🌸 گل یا پوچ!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+        
         elif stripped.startswith("انتقال "):
             amount = extract_amount(text, "انتقال")
             reply_to = msg.get("reply_to_message")
@@ -262,6 +287,12 @@ def process_callback(cb):
             else:
                 answer_callback(cb_id, "❌ طلا کافی ندارید!", True)
 
+        # هندل دکمه‌های بازی‌ها
+        if data.startswith("dooz_") or data.startswith("casino_") or data.startswith("rps_") or data.startswith("guess_"):
+            handle_game_callback(cb, conn, u)
+            release_conn(conn)
+            return
+        
         elif data.startswith("jail_wait_"):
             target_id = int(data.replace("jail_wait_", ""))
             if user_id != target_id:
