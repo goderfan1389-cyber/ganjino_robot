@@ -2,7 +2,7 @@ import time
 import random
 from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount, format_seconds
 from database import get_conn, release_conn, get_user, update_user
-from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD
+from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD, ADMIN_IDS
 from admin import handle_admin_commands, handle_admin_callback
 
 START_TEXT = """🤖 به ربات اقتصاد-بازی خوش آمدید!
@@ -22,28 +22,31 @@ def process_message(msg):
         conn = get_conn()
         u = get_user(user_id, conn)
         
+        # آپدیت اسم کاربر
         fname = user.get("first_name") or user.get("username") or "کاربر"
         if u['name'] != fname:
             update_user(user_id, {"name": fname}, conn)
 
-        # دستور مخفی ریست کاربر (فقط مالک)
-        if text.startswith(OWNER_RESET_USER_CMD) and user_id == OWNER_ID:
+        # دستور مخفی ریست کاربر (فقط مالک یا ادمین)
+        if text.startswith(OWNER_RESET_USER_CMD) and user_id in ADMIN_IDS:
             parts = text.split()
             if len(parts) == 2 and parts[1].isdigit():
                 target_id = int(parts[1])
                 cur = conn.cursor()
                 cur.execute("DELETE FROM users WHERE user_id = %s", (target_id,))
                 conn.commit()
-                send_message(chat_id, f"✅ اطلاعات کاربر {target_id} کاملا ریست شد.")
+                send_message(chat_id, f"✅ اطلاعات کاربر {target_id} کاملا از دیتابیس پاک شد.")
             release_conn(conn)
             return
 
+        # هندل کردن دستورات ادمین
         if handle_admin_commands(msg, u, conn, reply_id):
             release_conn(conn)
             return
 
         stripped = text.strip()
         
+        # اگر تو زندانه، بقیه دستورات کار نکنن جز /start و کیف
         if is_jailed(u) and stripped not in ["/start", "کیف"]:
             remaining = u['jail_until'] - time.time()
             _, m, s = format_seconds(remaining)
@@ -125,7 +128,7 @@ def process_callback(cb):
         conn = get_conn()
         u = get_user(user_id, conn)
 
-        if data.startswith("admin_") and user_id in [324157864, 890352247]:
+        if data.startswith("admin_") and user_id in ADMIN_IDS:
             handle_admin_callback(cb, conn, u)
             release_conn(conn)
             return
@@ -139,6 +142,30 @@ def process_callback(cb):
                 edit_message(chat_id, msg_id, "✅ شما با پرداخت فدیه آزاد شدید!")
             else:
                 answer_callback(cb_id, "❌ طلا کافی ندارید!", True)
+
+        elif data.startswith("jail_wait_"):
+            target_id = int(data.replace("jail_wait_", ""))
+            if user_id != target_id:
+                answer_callback(cb_id, "این دکمه برای شما نیست.", True); release_conn(conn); return
+            remaining = u['jail_until'] - time.time()
+            if remaining <= 0:
+                answer_callback(cb_id, "شما الان آزادید! دستور مورد نظرتون رو دوباره بفرستید.", False)
+            else:
+                _, m, s = format_seconds(remaining)
+                answer_callback(cb_id, f"⏳ {m} دقیقه و {s} ثانیه دیگر تا آزادی باقی مانده.", True)
+
+        elif data.startswith("jail_ticket_"):
+            target_id = int(data.replace("jail_ticket_", ""))
+            if user_id != target_id:
+                answer_callback(cb_id, "این دکمه برای شما نیست.", True); release_conn(conn); return
+            if u['items'].get("بلیط آزادی", 0) > 0:
+                u['items']["بلیط آزادی"] -= 1
+                if u['items']["بلیط آزادی"] <= 0: del u['items']["بلیط آزادی"]
+                update_user(user_id, {"items": u['items'], "jail_until": 0}, conn)
+                answer_callback(cb_id, "✅ شما آزاد شدید!", False)
+                edit_message(chat_id, msg_id, "✅ شما با استفاده از بلیط آزادی آزاد شدید!")
+            else:
+                answer_callback(cb_id, "❌ شما بلیط آزادی ندارید.", True)
 
         elif data.startswith("vote_"):
             parts = data.split("_")
