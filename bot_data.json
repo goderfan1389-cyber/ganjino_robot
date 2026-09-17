@@ -1,87 +1,726 @@
 {
-    "324157864": {
-        "gold": 0,
-        "bank": 134,
-        "xp": 1,
-        "last_claim": 1789574581.2245567,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "پشتیبان آرکا✔"
+  "324157864": {
+    "gold": 0,
+    "bank": 276,
+    "xp": 23,
+    "last_claim": 1789591885.2803805,
+    "last_daily": 1789579008.3360233,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [
+      1536011058,
+      1556648703,
+      218605862
+    ],
+    "items": {},
+    "name": "پشتیبان آرکا✔",
+    "_seen_start": true
+  },
+  "_groups": {
+    "5160441108": [
+      324157864,
+      1393593897,
+      890352247,
+      994865959,
+      731718932,
+      1518829426,
+      1470642107,
+      248115941,
+      1555204315,
+      1984703622,
+      869094249,
+      590423359
+    ],
+    "5826518644": [
+      324157864,
+      994865959,
+      890352247
+    ]
+  },
+  "1393593897": {
+    "gold": 0,
+    "bank": 29034,
+    "xp": 20,
+    "last_claim": 1789588562.44961,
+    "last_daily": 1789579813.4129355,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+    "_seen_start": true
+  },
+  "731718932": {
+    "gold": 0,
+    "bank": 656,
+    "xp": 6,
+    "last_claim": 1789602349.9229941,
+    "last_daily": 0,
+    "jail_until": 1789580903.387768,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "𝒦ℐ𝒜𝒩"
+  },
+  "_admin_pending": {
+    "890352247": "backup_password"
+  },
+  "890352247": {
+    "gold": 0,
+    "bank": 163,
+    "xp": 2,
+    "last_claim": 1789580184.6015015,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "erfan4524",
+    "_seen_start": true
+  },
+  "994865959": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 12,
+    "last_claim": 1789579940.4615304,
+    "last_daily": 1789579717.4250011,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "F.O.P"
+  },
+  "1518829426": {
+    "gold": 0,
+    "bank": 19127,
+    "xp": 19,
+    "last_claim": 1789604425.6945748,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [
+      869094249
+    ],
+    "items": {},
+    "name": "امیررضا"
+  },
+  "1470642107": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 2,
+    "last_claim": 1789576248.7134182,
+    "last_daily": 1789576235.5903676,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "amirMr¹³",
+    "_seen_start": true
+  },
+  "_game_counter": 33,
+  "_casino_games": {
+    "1": {
+      "chat_id": 5160441108,
+      "message_id": 1589,
+      "host_id": 1518829426,
+      "host_name": "امیررضا",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 1000,
+      "status": "finished",
+      "created_at": 1789576337.5987842
     },
-    "_groups": {
-        "5160441108": [
-            324157864,
-            1393593897,
-            890352247,
-            994865959,
-            731718932
-        ]
+    "2": {
+      "chat_id": 5160441108,
+      "message_id": 1598,
+      "host_id": 1518829426,
+      "host_name": "امیررضا",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 500,
+      "status": "finished",
+      "created_at": 1789576356.3525996
     },
-    "1393593897": {
-        "gold": 0,
-        "bank": 2620,
-        "xp": 3,
-        "last_claim": 1789574216.1484003,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "ᗰᝪᕼᗩᗰᗰᗩᗞ"
+    "3": {
+      "chat_id": 5160441108,
+      "message_id": 1628,
+      "host_id": 1518829426,
+      "host_name": "امیررضا",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 550,
+      "status": "finished",
+      "created_at": 1789576567.9876566
     },
-    "731718932": {
-        "gold": 184,
-        "bank": 0,
-        "xp": 0,
-        "last_claim": 0,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "𝒦ℐ𝒜𝒩"
+    "4": {
+      "chat_id": 5160441108,
+      "message_id": 1644,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 1518829426,
+      "opponent_name": "امیررضا",
+      "bet": 1000,
+      "status": "finished",
+      "created_at": 1789576619.631753
     },
-    "_admin_pending": {
-        "324157864": "backup_password"
+    "5": {
+      "chat_id": 5160441108,
+      "message_id": 1709,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 200,
+      "status": "finished",
+      "created_at": 1789578525.3786206
     },
-    "890352247": {
-        "gold": 0,
-        "bank": 0,
-        "xp": 0,
-        "last_claim": 0,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "erfan4524",
-        "_seen_start": true
+    "6": {
+      "chat_id": 5160441108,
+      "message_id": 1726,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 60,
+      "status": "finished",
+      "created_at": 1789578597.7868054
     },
-    "994865959": {
-        "gold": 0,
-        "bank": 111,
-        "xp": 1,
-        "last_claim": 1789574410.5183759,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "F.O.P"
+    "7": {
+      "chat_id": 5160441108,
+      "message_id": 1731,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 100,
+      "status": "finished",
+      "created_at": 1789578608.496579
     },
-    "1518829426": {
-        "gold": 1380,
-        "bank": 0,
-        "xp": 0,
-        "last_claim": 0,
-        "last_daily": 0,
-        "jail_until": 0,
-        "referred_by": null,
-        "referrals": [],
-        "items": {},
-        "name": "کاربر"
+    "8": {
+      "chat_id": 5160441108,
+      "message_id": 1738,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 196,
+      "status": "finished",
+      "created_at": 1789578624.8785436
+    },
+    "9": {
+      "chat_id": 5160441108,
+      "message_id": 1749,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 3000,
+      "status": "finished",
+      "created_at": 1789578646.6905496
+    },
+    "10": {
+      "chat_id": 5160441108,
+      "message_id": 1763,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 400,
+      "status": "finished",
+      "created_at": 1789578677.021878
+    },
+    "11": {
+      "chat_id": 5160441108,
+      "message_id": 1779,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 20,
+      "status": "finished",
+      "created_at": 1789578721.7776396
+    },
+    "12": {
+      "chat_id": 5160441108,
+      "message_id": 1788,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 4000,
+      "status": "finished",
+      "created_at": 1789578761.8331172
+    },
+    "13": {
+      "chat_id": 5160441108,
+      "message_id": 1837,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 1000,
+      "status": "finished",
+      "created_at": 1789578839.095439
+    },
+    "14": {
+      "chat_id": 5160441108,
+      "message_id": 1941,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 994865959,
+      "opponent_name": "F.O.P",
+      "bet": 1,
+      "status": "finished",
+      "created_at": 1789579032.0696561
+    },
+    "16": {
+      "chat_id": 5160441108,
+      "message_id": 2063,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 1,
+      "status": "finished",
+      "created_at": 1789579290.670953
+    },
+    "17": {
+      "chat_id": 5160441108,
+      "message_id": 2469,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 890352247,
+      "opponent_name": "erfan4524",
+      "bet": 100,
+      "status": "finished",
+      "created_at": 1789580169.3127508
+    },
+    "18": {
+      "chat_id": 5160441108,
+      "message_id": 2514,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 1,
+      "status": "finished",
+      "created_at": 1789580253.692212
+    },
+    "19": {
+      "chat_id": 5160441108,
+      "message_id": 2578,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 10,
+      "status": "finished",
+      "created_at": 1789580341.4110353
+    },
+    "20": {
+      "chat_id": 5160441108,
+      "message_id": 2663,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 3000,
+      "status": "finished",
+      "created_at": 1789580855.8590844
+    },
+    "21": {
+      "chat_id": 5160441108,
+      "message_id": 2681,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 6000,
+      "status": "finished",
+      "created_at": 1789580893.5036893
+    },
+    "22": {
+      "chat_id": 5160441108,
+      "message_id": 2695,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 265,
+      "status": "finished",
+      "created_at": 1789580916.8927782
+    },
+    "23": {
+      "chat_id": 5160441108,
+      "message_id": 2734,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 1,
+      "status": "finished",
+      "created_at": 1789581051.0769355
+    },
+    "25": {
+      "chat_id": 5160441108,
+      "message_id": 2762,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 218,
+      "status": "finished",
+      "created_at": 1789581117.8332338
+    },
+    "26": {
+      "chat_id": 5160441108,
+      "message_id": 2889,
+      "host_id": 590423359,
+      "host_name": "واسطه گر سینا",
+      "opponent_id": 324157864,
+      "opponent_name": "پشتیبان آرکا✔",
+      "bet": 180,
+      "status": "finished",
+      "created_at": 1789586582.4083407
+    },
+    "27": {
+      "chat_id": 5160441108,
+      "message_id": 3034,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 43,
+      "status": "finished",
+      "created_at": 1789587250.4143298
+    },
+    "28": {
+      "chat_id": 5160441108,
+      "message_id": 3104,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": null,
+      "opponent_name": null,
+      "bet": 176,
+      "status": "cancelled",
+      "created_at": 1789587479.2618368
+    },
+    "29": {
+      "chat_id": 5160441108,
+      "message_id": 3163,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 590423359,
+      "opponent_name": "واسطه گر سینا",
+      "bet": 7000,
+      "status": "finished",
+      "created_at": 1789587751.0250807
+    },
+    "30": {
+      "chat_id": 5160441108,
+      "message_id": 3245,
+      "host_id": 590423359,
+      "host_name": "واسطه گر سینا",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 1000,
+      "status": "finished",
+      "created_at": 1789588020.5637915
+    },
+    "31": {
+      "chat_id": 5160441108,
+      "message_id": 3263,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 590423359,
+      "opponent_name": "واسطه گر سینا",
+      "bet": 8000,
+      "status": "finished",
+      "created_at": 1789588063.3899932
+    },
+    "32": {
+      "chat_id": 5160441108,
+      "message_id": 3296,
+      "host_id": 1393593897,
+      "host_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "opponent_id": 590423359,
+      "opponent_name": "واسطه گر سینا",
+      "bet": 1000,
+      "status": "finished",
+      "created_at": 1789588148.250176
+    },
+    "33": {
+      "chat_id": 5160441108,
+      "message_id": 3459,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 8000,
+      "status": "finished",
+      "created_at": 1789588611.7768393
     }
+  },
+  "1536011058": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": 324157864,
+    "referrals": [],
+    "items": {},
+    "name": "یا الله",
+    "_seen_start": true
+  },
+  "917981897": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "‌🇹‌‌🇦‌‌🇭‌‌🇦‌"
+  },
+  "1822405814": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "OFF"
+  },
+  "1095285635": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "𝑀𝑅_𝒽𝒾𝓉𝓂𝒶𝓃",
+    "_seen_start": true
+  },
+  "1639083682": {
+    "gold": 1191,
+    "bank": 0,
+    "xp": 11,
+    "last_claim": 1789589079.5094974,
+    "last_daily": 1789587022.0212293,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "..."
+  },
+  "_rps_games": {
+    "15": {
+      "chat_id": 5160441108,
+      "message_id": 1968,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 10,
+      "status": "finished",
+      "created_at": 1789579091.2163017,
+      "choices": {
+        "324157864": "rock",
+        "1393593897": "rock"
+      },
+      "deadline": 1789579157.5465326
+    }
+  },
+  "1178057070": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "💰 گنجینو | GANJINO"
+  },
+  "248115941": {
+    "gold": 0,
+    "bank": 551,
+    "xp": 2,
+    "last_claim": 1789579953.814251,
+    "last_daily": 1789580006.598019,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "《...ᡕᠵ᠊ᡃ່࡚ࠢ࠘⸝່ࠡ᠊߯ᡁࠣ࠘᠊᠊ࠢ࠘气亠... •|• MOHAMMAD 》"
+  },
+  "1555204315": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 5,
+    "last_claim": 1789594751.2686195,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "𝒚𝒐𝒔𝒆𝒇"
+  },
+  "_guess_games": {
+    "24": {
+      "chat_id": 5160441108,
+      "message_id": 2748,
+      "host_id": 324157864,
+      "host_name": "پشتیبان آرکا✔",
+      "opponent_id": 1393593897,
+      "opponent_name": "ᗰᝪᕼᗩᗰᗰᗩᗞ",
+      "bet": 1,
+      "status": "finished",
+      "created_at": 1789581073.6133378,
+      "flower_hand": "left",
+      "deadline": 1789581127.9779544
+    }
+  },
+  "869094249": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 2,
+    "last_claim": 1789584675.762278,
+    "last_daily": 1789584673.861442,
+    "jail_until": 0,
+    "referred_by": 1518829426,
+    "referrals": [],
+    "items": {},
+    "name": "امیر",
+    "_seen_start": true
+  },
+  "1984703622": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 2,
+    "last_claim": 1789584562.852666,
+    "last_daily": 1789584566.5683484,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "ممد",
+    "_seen_start": true
+  },
+  "590423359": {
+    "gold": 88,
+    "bank": 836,
+    "xp": 9,
+    "last_claim": 1789587952.1849263,
+    "last_daily": 1789586624.7544918,
+    "jail_until": 1789588685.6638453,
+    "referred_by": null,
+    "referrals": [],
+    "items": {
+      "آهنربا": 5
+    },
+    "name": "واسطه گر سینا",
+    "_seen_start": true
+  },
+  "218605862": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": 324157864,
+    "referrals": [],
+    "items": {},
+    "name": "𝒳𝒽𝑜𝑜𝒿𝒾",
+    "_seen_start": true
+  },
+  "137735315": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "𝙰𝚁𝚈𝙰",
+    "_seen_start": true
+  },
+  "1556648703": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": 324157864,
+    "referrals": [],
+    "items": {},
+    "name": "Ht 13:33",
+    "_seen_start": true
+  },
+  "1156762404": {
+    "gold": 195,
+    "bank": 0,
+    "xp": 1,
+    "last_claim": 1789587468.0392828,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "💸واسطه گری 『𝙳𝚊𝚛𝚘𝚞𝚐𝚑𝚎』💸"
+  },
+  "357990460": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "『𝘼𝙈𝙄𝙍』",
+    "_seen_start": true
+  },
+  "928237731": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "MR",
+    "_seen_start": true
+  },
+  "1050936429": {
+    "gold": 0,
+    "bank": 0,
+    "xp": 0,
+    "last_claim": 0,
+    "last_daily": 0,
+    "jail_until": 0,
+    "referred_by": null,
+    "referrals": [],
+    "items": {},
+    "name": "Arka Member",
+    "_seen_start": true
+  }
 }
