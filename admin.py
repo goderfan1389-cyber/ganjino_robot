@@ -4,8 +4,10 @@ import requests
 import datetime
 import json
 import os
-from utils import send_message, answer_callback, delete_message, copy_message, admin_panel_keyboard
-from database import get_conn, get_user, update_user
+import psycopg2
+import psycopg2.extras
+from utils import send_message, answer_callback, delete_message, copy_message, edit_message, admin_panel_keyboard
+from database import get_conn, release_conn, get_user, update_user
 from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME, BACKUP_PASSWORD
 
 def is_admin(user_id): return user_id in ADMIN_IDS
@@ -73,7 +75,7 @@ def handle_admin_callback(cb, conn, u):
 
     elif data == "admin_end_event":
         cur = conn.cursor()
-        cur.execute("SELECT event_id, options FROM events WHERE status='active'")
+        cur.execute("SELECT event_id, options FROM events WHERE status='active' OR status='locked'")
         events = cur.fetchall()
         if not events:
             answer_callback(cb_id, "مسابقه فعالی وجود ندارد.", True)
@@ -137,7 +139,6 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             del admin_states[user_id]
             return True
 
-        # --- پیام همگانی ---
         if state['step'] == 'bc_wait_msg':
             state['data']['msg_id'] = msg['message_id']
             state['step'] = 'bc_confirm'
@@ -145,7 +146,6 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             send_message(chat_id, "آیا از ارسال این پیام مطمئن هستید؟", reply_markup=kb)
             return True
 
-        # --- مراحل قرعه کشی مسابقه ---
         if state['step'] == 'ev_wait_msg':
             state['data']['msg_id'] = msg['message_id']
             state['step'] = 'ev_confirm'
@@ -167,41 +167,57 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
                 send_message(chat_id, f"گزینه {len(state['data']['options'])+1} را وارد کنید:")
             else:
                 state['step'] = 'time'
-                send_message(chat_id, "تا چه ساعتی مهلت دارند؟ (فرمت 24 ساعته مثال: 19:30)")
+                send_message(chat_id, "زمان مسابقه رو به این شکل بفرست (مثال: 60 ثانیه، 30 دقیقه، 2 ساعت، 1 روز):")
             return True
 
         if state['step'] == 'time':
             try:
-                h, m = map(int, text.split(':'))
-                # تنظیم زمان بر اساس ساعت ایران (UTC+3:30)
-                now = datetime.datetime.utcnow() + datetime.timedelta(minutes=210)
-                deadline = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if deadline < now: deadline += datetime.timedelta(days=1)
+                parts = text.split()
+                val = int(parts[0])
+                unit = parts[1] if len(parts) > 1 else "دقیقه"
+                
+                if "ثانیه" in unit: seconds = val
+                elif "دقیقه" in unit: seconds = val * 60
+                elif "ساعت" in unit: seconds = val * 3600
+                elif "روز" in unit: seconds = val * 86400
+                else: 
+                    send_message(chat_id, "فرمت اشتباه است. مثال: 60 ثانیه، 30 دقیقه، 2 ساعت، 1 روز")
+                    return True
+                    
+                deadline = time.time() + seconds
                 
                 cur = conn.cursor()
-                # کپی پیام به گروه و گرفتن آیدی پیام گروه
+                # اول پیام عکس/متن ادمین رو کپی کن تو گروه
                 resp = copy_message(f"@{MAIN_GROUP_USERNAME}", chat_id, state['data']['msg_id'])
                 group_msg_id = resp.json().get("result", {}).get("message_id")
                 
+                # رکورد رو تو دیتابیس بساز تا آیدی رو بگیریم
                 cur.execute("INSERT INTO events (admin_chat_id, admin_msg_id, group_msg_id, options, deadline, status) VALUES (%s, %s, %s, %s, %s, 'active') RETURNING event_id", 
-                            (chat_id, state['data']['msg_id'], group_msg_id, state['data']['options'], deadline.timestamp()))
+                            (chat_id, state['data']['msg_id'], group_msg_id, state['data']['options'], deadline))
                 event_id = cur.fetchone()[0]
                 conn.commit()
                 
+                # حالا دکمه‌ها رو با آیدی درست بفرست تو گروه
                 keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"vote_{event_id}_{i}"}] for i, opt in enumerate(state['data']['options'])]}
-                send_message(f"@{MAIN_GROUP_USERNAME}", "⚽ مسابقه پیش‌بینی! انتخاب کنید:", reply_markup=keyboard)
+                resp2 = send_message(f"@{MAIN_GROUP_USERNAME}", "⚽ مسابقه پیش‌بینی! انتخاب کنید:", reply_markup=keyboard)
+                buttons_msg_id = resp2.json().get("result", {}).get("message_id")
+                
+                # آیدی پیام دکمه‌دار رو سیو کنیم تا بعداً قفلش کنیم
+                cur.execute("UPDATE events SET buttons_msg_id = %s WHERE event_id = %s", (buttons_msg_id, event_id))
+                conn.commit()
                 
                 del admin_states[user_id]
-                send_message(chat_id, "✅ مسابقه در گروه ایجاد شد.")
-            except:
-                send_message(chat_id, "فرمت ساعت اشتباه است. مثال درست: 19:30")
+                send_message(chat_id, f"✅ مسابقه با مدت {val} {unit} در گروه ایجاد شد.")
+            except Exception as e:
+                print("Time Parse Error:", e)
+                send_message(chat_id, "فرمت زمان اشتباه است. مثال درست: 30 دقیقه")
             return True
 
         if state['step'] == 'end_select':
             if not text.isdigit(): return True
             event_id = int(text)
             cur = conn.cursor()
-            cur.execute("SELECT options FROM events WHERE event_id=%s AND status='active'", (event_id,))
+            cur.execute("SELECT options FROM events WHERE event_id=%s AND status IN ('active', 'locked')", (event_id,))
             row = cur.fetchone()
             if not row:
                 send_message(chat_id, "مسابقه پیدا نشد."); return True
@@ -234,11 +250,10 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             event_id = state['data']['event_id']
             win_idx = state['data']['win_idx']
             
-            cur = conn.cursor()
-            cur.execute("SELECT options, group_msg_id FROM events WHERE event_id=%s", (event_id,))
-            row = cur.fetchone()
-            options = row[0]
-            group_msg_id = row[1]
+            cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT * FROM events WHERE event_id=%s", (event_id,))
+            ev = cur.fetchone()
+            options = ev['options']
             win_option = options[win_idx]
             
             cur.execute("SELECT user_id FROM event_votes WHERE event_id=%s AND choice=%s", (event_id, win_option))
@@ -259,16 +274,15 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
             cur.execute("UPDATE events SET status='finished', winning_option=%s WHERE event_id=%s", (win_option, event_id))
             conn.commit()
             
-            # پاک کردن پیام مسابقه از گروه
-            if group_msg_id:
-                delete_message(f"@{MAIN_GROUP_USERNAME}", group_msg_id)
+            # پاک کردن پیام دکمه‌دار از گروه چون مسابقه تموم شد
+            if ev['buttons_msg_id']:
+                delete_message(f"@{MAIN_GROUP_USERNAME}", ev['buttons_msg_id'])
             
             send_message(f"@{MAIN_GROUP_USERNAME}", f"🏁 مسابقه تمام شد!\nگزینه برنده: {win_option}\nجوایز به برندگان داده شد (نام‌ها فاش نمیشه).")
             del admin_states[user_id]
-            send_message(chat_id, "✅ جوایز با موفقیت توزیع شد و پیام مسابقه پاک شد.")
+            send_message(chat_id, "✅ جوایز با موفقیت توزیع شد.")
             return True
 
-        # --- مراحل پنل ادمین ---
         if state['step'] in ["add_balance", "remove_balance", "add_bank", "remove_bank"]:
             parts = text.split()
             if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
@@ -309,4 +323,44 @@ def handle_admin_commands(msg, u, conn, reply_id=None):
         send_message(chat_id, "🛠 پنل مدیریت ربات طلا\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
         return True
 
+    # دستور چک کردن زمان مسابقات
+    if text == "زمان":
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT * FROM events WHERE status='active'")
+        events = cur.fetchall()
+        if not events:
+            send_message(chat_id, "هیچ مسابقه فعالی وجود ندارد.", reply_id)
+            return True
+        txt = "⏳ زمان باقی‌مانده از مسابقات:\n\n"
+        for ev in events:
+            remaining = int(ev['deadline'] - time.time())
+            if remaining > 0:
+                days, rem = divmod(remaining, 86400)
+                hours, rem = divmod(rem, 3600)
+                mins, secs = divmod(rem, 60)
+                t_str = f"{days} روز و {hours} ساعت و {mins} دقیقه و {secs} ثانیه" if days > 0 else f"{hours} ساعت و {mins} دقیقه و {secs} ثانیه" if hours > 0 else f"{mins} دقیقه و {secs} ثانیه" if mins > 0 else f"{secs} ثانیه"
+                txt += f"آیدی {ev['event_id']}: {t_str}\n"
+        send_message(chat_id, txt, reply_id)
+        return True
+
     return False
+
+# تابع قفل کردن خودکار دکمه‌ها بعد از اتمام زمان
+def check_expired_events():
+    conn = get_conn()
+    if not conn: return
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        now = time.time()
+        cur.execute("SELECT * FROM events WHERE status='active' AND deadline < %s", (now,))
+        events = cur.fetchall()
+        for ev in events:
+            if ev['buttons_msg_id']:
+                # ویرایش پیام دکمه‌دار و حذف دکمه‌ها
+                edit_message(f"@{MAIN_GROUP_USERNAME}", ev['buttons_msg_id'], "⏰ زمان مسابقه به پایان رسید!\nانتخاب‌ها قفل شدند.", reply_markup={"inline_keyboard": []})
+            cur.execute("UPDATE events SET status='locked' WHERE event_id=%s", (ev['event_id'],))
+        conn.commit()
+    except Exception as e:
+        print("Expired Events Error:", e)
+    finally:
+        release_conn(conn)
