@@ -20,6 +20,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "dbname=postgres user=postgres pas
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 
 CLAIM_COOLDOWN = 4 * 60
+CLAIM_COOLDOWN = 4 * 60
+DAILY_COOLDOWN_SECONDS = 24 * 60 * 60
 JAIL_SECONDS = 10 * 60
 JAIL_RANSOM = 150
 
