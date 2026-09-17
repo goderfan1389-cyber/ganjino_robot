@@ -10,8 +10,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "1178057070:HPKhPZfmr8oVwDqSXIpbDFfqBroo
 BOT_USERNAME = os.environ.get("BOT_USERNAME", "GANJINO_BOT")
 MAIN_GROUP_USERNAME = os.environ.get("MAIN_GROUP_USERNAME", "GANJINO_GAP")
 JOIN_CHANNEL_USERNAME = os.environ.get("JOIN_CHANNEL_USERNAME", "computer_program")
+BACKUP_PASSWORD = os.environ.get("BACKUP_PASSWORD", "GANJINO_TEAM_IR")
 
-ADMIN_IDS = [324157864, 890352247]  # آیدی عددی ادمین‌ها
+ADMIN_IDS = [324157864, 890352247]
 OWNER_ID = 324157864
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "dbname=postgres user=postgres password=postgres host=localhost port=5432")
