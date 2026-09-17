@@ -5,15 +5,16 @@ from config import BASE_URL
 from database import init_db
 from handlers import process_message, process_callback
 
-# این تابع‌ها رو می‌سازیم که اگه اروری تو نخ‌ها بود، مخفی نمونه و چاپ بشه
 def safe_process_message(msg):
     try:
+        print(f"📥 Received message from {msg.get('from', {}).get('id')}")
         process_message(msg)
     except Exception as e:
         print("🔴 ERROR in process_message:", e)
 
 def safe_process_callback(cb):
     try:
+        print(f"📥 Received button click from {cb.get('from', {}).get('id')}")
         process_callback(cb)
     except Exception as e:
         print("🔴 ERROR in process_callback:", e)
@@ -31,13 +32,16 @@ def main():
             resp = session.get(f"{BASE_URL}/getUpdates", params=params, timeout=20)
             data = resp.json()
             
-            # اگر بله ارور داد (مثلا وب‌هوک روشنه یا دو ربات با هم روشنن)
             if not data.get("ok"):
                 print("🔴 BALE API ERROR:", data)
                 time.sleep(3)
                 continue
                 
             updates = data.get("result", [])
+            
+            if not updates:
+                print("⏳ No new updates, waiting...") # این پیام نشون میده ربات زنده‌ست
+                
         except Exception as e:
             print("🔴 Polling error:", e)
             time.sleep(2)
