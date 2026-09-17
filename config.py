@@ -14,6 +14,7 @@ BACKUP_PASSWORD = os.environ.get("BACKUP_PASSWORD", "GANJINO_TEAM_IR")
 
 ADMIN_IDS = [324157864, 890352247]
 OWNER_ID = 324157864
+OWNER_RESET_USER_CMD = "/resetuser_9fK7xQ2pLmZ8vR3"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "dbname=postgres user=postgres password=postgres host=localhost port=5432")
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
