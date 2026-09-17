@@ -145,6 +145,7 @@ def process_message(msg):
             target_id = reply_to.get("from", {}).get("id")
             if target_id == user_id:
                 send_message(chat_id, "نمی‌توانید از خودتان بدزدید!", reply_to_message_id=reply_id); release_conn(conn); return
+            
             now = time.time()
             if now - u['last_steal'] < STEAL_COOLDOWN:
                 warnings = u['steal_warnings'] + 1
@@ -154,8 +155,11 @@ def process_message(msg):
                     send_message(chat_id, f"🚔 پافشاری کردی! زندان ۱۰ دقیقه.", reply_markup=keyboard, reply_to_message_id=reply_id)
                 else:
                     update_user(user_id, {"steal_warnings": warnings}, conn)
-                    send_message(chat_id, f"⏳ ۳۰ ثانیه نرفته! اخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", reply_to_message_id=reply_id)
+                    # محاسبه زمان دقیق باقیمانده
+                    remaining_sec = int(STEAL_COOLDOWN - (now - u['last_steal']))
+                    send_message(chat_id, f"⏳ *هنوز زمان دزدی نرسیده!*\n\nحدود {remaining_sec} ثانیه دیگه باید صبر کنی.\nاخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", parse_mode="Markdown", reply_to_message_id=reply_id)
                 release_conn(conn); return
+
             target = get_user(target_id, conn)
             if target['gold'] <= 0:
                 send_message(chat_id, "این کاربر طلا در کیسه ندارد!", reply_to_message_id=reply_id); release_conn(conn); return
