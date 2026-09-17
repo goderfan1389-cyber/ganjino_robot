@@ -2,7 +2,7 @@ import requests
 import json
 import time
 import os
-from config import BASE_URL, JOIN_CHANNEL_USERNAME
+from config import BASE_URL
 
 session = requests.Session()
 
@@ -26,6 +26,15 @@ def answer_callback(cb_id, text="", show_alert=True):
     if text: payload["text"] = text; payload["show_alert"] = show_alert
     try: session.post(f"{BASE_URL}/answerCallbackQuery", data=payload, timeout=10)
     except: pass
+
+def delete_message(chat_id, message_id):
+    if not message_id: return
+    try: session.post(f"{BASE_URL}/deleteMessage", data={"chat_id": chat_id, "message_id": message_id}, timeout=10)
+    except: pass
+
+def copy_message(to_chat_id, from_chat_id, message_id):
+    try: return session.post(f"{BASE_URL}/copyMessage", data={"chat_id": to_chat_id, "from_chat_id": from_chat_id, "message_id": message_id}, timeout=10)
+    except: return None
 
 def is_jailed(u): return u['jail_until'] > time.time()
 
