@@ -1,20 +1,37 @@
 import time
 import random
-from utils import send_message, answer_callback, is_jailed, extract_amount
+from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount
 from database import get_conn, release_conn, get_user, update_user
 from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS
 from admin import handle_admin_commands
 
-START_TEXT = "🤖 به ربات طلا خوش آمدید!\nبرای دیدن موجودی خود بنویسید: کیف"
+START_TEXT = """🤖 به ربات اقتصاد-بازی طلا خوش آمدید!
+
+با این ربات می‌توانید طلا جمع کنید، اقلام بخرید، از دیگران دزدی کنید و در مسابقات شرکت کنید.
+
+📌 برای شروع از دستورات زیر استفاده کنید:
+🔸 طلا — دریافت طلای رایگان (هر ۴ دقیقه)
+🔸 روزانه — جایزه روزانه
+🔸 کیف — نمایش موجودی شما"""
+
 SHOP_TEXT = """🛒 فروشگاه ربات:
 
 🛡 سپر — 100 طلا
-🔪 چاقو — 100 طلا
-🎭 ماسک — 100 طلا
-🧲 آهنربا — 100 طلا
-🎫 بلیط آزادی — 47 طلا
+جلوگیری از دزدی
 
-برای خرید: خرید [نام آیتم]"""
+🔪 چاقو — 100 طلا
+کاهش احتمال دستگیری در دزدی
+
+🎭 ماسک — 100 طلا
+کاهش بیشتر احتمال زندان
+
+🧲 آهنربا — 100 طلا
+دریافت طلا بیشتر
+
+🎫 بلیط آزادی — 47 طلا
+آزادی فوری از زندان
+
+برای خرید بنویسید: خرید [نام آیتم]"""
 
 def process_message(msg):
     try:
@@ -30,14 +47,23 @@ def process_message(msg):
         conn = get_conn()
         u = get_user(user_id, conn)
         
-        if u['name'] != user.get("first_name", "کاربر"):
-            update_user(user_id, {"name": user.get("first_name", "کاربر")}, conn)
+        # رفع باگ پی‌وی: اگر کاربر اسم نداشت، یوزرنیم یا کلمه کاربر رو بذار
+        fname = user.get("first_name") or user.get("username") or "کاربر"
+        if u['name'] != fname:
+            update_user(user_id, {"name": fname}, conn)
 
         if handle_admin_commands(msg, u, conn, reply_id):
             release_conn(conn)
             return
 
         stripped = text.strip()
+        
+        # اگر تو زندانه، بقیه دستورات کار نکنن جز /start و کیف
+        if is_jailed(u) and stripped not in ["/start", "کیف"]:
+            keyboard = {"inline_keyboard": [[{"text": f"💰 پرداخت فدیه ({JAIL_RANSOM} طلا)", "callback_data": f"jail_pay_{user_id}"}]]}
+            send_message(chat_id, f"🚔 *شما در زندان هستید!*\n⏳ {int(u['jail_until'] - time.time())} ثانیه تا آزادی.\n\nبرای آزادی فوری، فدیه پرداخت کنید:", reply_markup=keyboard, reply_to_message_id=reply_id)
+            release_conn(conn)
+            return
 
         if stripped == "/start":
             send_message(chat_id, START_TEXT, reply_to_message_id=reply_id)
@@ -45,59 +71,55 @@ def process_message(msg):
         elif stripped == "کیف":
             items_str = "\n".join([f"{ITEMS[k]['emoji']} {k} × {v}" for k, v in u['items'].items()])
             if not items_str: items_str = "خالی"
-            send_message(chat_id, f"💼 کیف طلا:\n\n🪙 کیسه طلا: {u['gold']:,}\n🏦 خزانه: {u['bank']:,}\n\n🎒 آیتم‌ها:\n{items_str}", reply_to_message_id=reply_id)
+            send_message(chat_id, f"💼 *کیف طلا شما:*\n\n🪙 کیسه طلا: {u['gold']:,}\n🏦 خزانه: {u['bank']:,}\n\n🎒 آیتم‌ها:\n{items_str}", reply_to_message_id=reply_id)
 
         elif stripped == "طلا":
-            if is_jailed(u):
-                send_message(chat_id, "🚔 در زندان هستید!", reply_to_message_id=reply_id); release_conn(conn); return
             now = time.time()
             if now - u['last_claim'] < CLAIM_COOLDOWN:
-                send_message(chat_id, "🔴 هنوز وقت دریافت طلا نرسیده!", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "*🔴 هنوز وقت دریافت طلا نرسیده!*\nهر ۴ دقیقه یک‌بار می‌توانید طلا بگیرید.", reply_to_message_id=reply_id); release_conn(conn); return
+            
             amount = random.randint(80, 250)
-            update_user(user_id, {"gold": u['gold'] + amount, "last_claim": now}, conn)
-            send_message(chat_id, f"💰 شما {amount} طلا گرفتید!", reply_to_message_id=reply_id)
+            xp = random.randint(1, 3)
+            update_user(user_id, {"gold": u['gold'] + amount, "last_claim": now, "xp": u.get('xp',0) + xp}, conn)
+            send_message(chat_id, f"💰 *تبریک! شما {amount} طلا دریافت کردید!*\n\n🎖 XP: {u.get('xp',0)+xp}\n🪙 موجودی کیسه: {u['gold']+amount:,} طلا", reply_to_message_id=reply_id)
 
         elif stripped == "روزانه":
-            if is_jailed(u):
-                send_message(chat_id, "🚔 در زندان هستید!", reply_to_message_id=reply_id); release_conn(conn); return
             now = time.time()
             if now - u.get('last_daily', 0) < 86400:
                 send_message(chat_id, "🔴 هنوز وقت دریافت جایزه روزانه نرسیده!", reply_to_message_id=reply_id); release_conn(conn); return
             amount = random.randint(300, 800)
             update_user(user_id, {"gold": u['gold'] + amount, "last_daily": now}, conn)
-            send_message(chat_id, f"🎁 جایزه روزانه شما: {amount} طلا!", reply_to_message_id=reply_id)
+            send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount} طلا!*", reply_to_message_id=reply_id)
 
         elif stripped == "دزدی":
-            if is_jailed(u):
-                send_message(chat_id, "🚔 در زندان هستید!", reply_to_message_id=reply_id); release_conn(conn); return
-
             reply_to = msg.get("reply_to_message")
             if not reply_to:
-                send_message(chat_id, "ریپلای کن روی فرد و دزدی بزن.", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "برای دزدی، روی پیام فرد ریپلای کنید و بنویسید دزدی.", reply_to_message_id=reply_id); release_conn(conn); return
 
             target_id = reply_to.get("from", {}).get("id")
             if target_id == user_id:
-                send_message(chat_id, "نمیتونی از خودت بدزنی!", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "نمی‌توانید از خودتان بدزدید!", reply_to_message_id=reply_id); release_conn(conn); return
 
             now = time.time()
             if now - u['last_steal'] < STEAL_COOLDOWN:
                 warnings = u['steal_warnings'] + 1
                 if warnings >= STEAL_WARNINGS_LIMIT:
                     update_user(user_id, {"jail_until": now + JAIL_SECONDS, "steal_warnings": 0}, conn)
-                    send_message(chat_id, f"🚔 پافشاری کردی! زندان 10 دقیقه. فدیه: {JAIL_RANSOM} طلا", reply_to_message_id=reply_id)
+                    keyboard = {"inline_keyboard": [[{"text": f"💰 پرداخت فدیه ({JAIL_RANSOM} طلا)", "callback_data": f"jail_pay_{user_id}"}]]}
+                    send_message(chat_id, f"🚔 *پافشاری کردی! زندان ۱۰ دقیقه.*\nفدیه: {JAIL_RANSOM} طلا", reply_markup=keyboard, reply_to_message_id=reply_id)
                 else:
                     update_user(user_id, {"steal_warnings": warnings}, conn)
-                    send_message(chat_id, f"⏳ 30 ثانیه نرفته! اخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", reply_to_message_id=reply_id)
+                    send_message(chat_id, f"⏳ *۳۰ ثانیه نرفته!*\nاخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", reply_to_message_id=reply_id)
                 release_conn(conn); return
 
             target = get_user(target_id, conn)
             if target['gold'] <= 0:
-                send_message(chat_id, "این کاربر طلا نداره!", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "این کاربر طلا در کیسه ندارد!", reply_to_message_id=reply_id); release_conn(conn); return
 
             steal_amount = min(random.randint(30, 100), target['gold'])
             update_user(target_id, {"gold": target['gold'] - steal_amount}, conn)
             update_user(user_id, {"gold": u['gold'] + steal_amount, "last_steal": now, "steal_warnings": 0}, conn)
-            send_message(chat_id, f"🥷 دزدی موفق! {steal_amount} طلا گرفتی.", reply_to_message_id=reply_id)
+            send_message(chat_id, f"🥷 *دزدی موفق!*\n💰 شما {steal_amount} طلا دزدیدید.", reply_to_message_id=reply_id)
 
         elif stripped == "فروشگاه":
             send_message(chat_id, SHOP_TEXT, reply_to_message_id=reply_id)
@@ -105,14 +127,14 @@ def process_message(msg):
         elif stripped.startswith("خرید "):
             item_name = stripped[5:].strip()
             if item_name not in ITEMS:
-                send_message(chat_id, "❌ آیتم پیدا نشد.", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "❌ همچین آیتمی در فروشگاه نیست.", reply_to_message_id=reply_id); release_conn(conn); return
             price = ITEMS[item_name]["price"]
             if u['gold'] < price:
-                send_message(chat_id, "❌ طلا کافی ندارید.", reply_to_message_id=reply_id); release_conn(conn); return
+                send_message(chat_id, "❌ موجودی کیسه طلا کافی نیست.", reply_to_message_id=reply_id); release_conn(conn); return
             u['gold'] -= price
             u['items'][item_name] = u['items'].get(item_name, 0) + 1
             update_user(user_id, {"gold": u['gold'], "items": u['items']}, conn)
-            send_message(chat_id, f"✅ شما {item_name} را خریدید.", reply_to_message_id=reply_id)
+            send_message(chat_id, f"✅ شما {ITEMS[item_name]['emoji']} {item_name} را خریدید.", reply_to_message_id=reply_id)
 
         elif stripped.startswith("واریز "):
             amount = extract_amount(text, "واریز")
@@ -146,7 +168,17 @@ def process_callback(cb):
         conn = get_conn()
         u = get_user(user_id, conn)
 
-        if data.startswith("vote_"):
+        # پرداخت فدیه زندان
+        if data.startswith("jail_pay_"):
+            if u['gold'] >= JAIL_RANSOM:
+                update_user(user_id, {"gold": u['gold'] - JAIL_RANSOM, "jail_until": 0}, conn)
+                answer_callback(cb_id, "✅ شما آزاد شدید!", False)
+                edit_message(chat_id, cb["message"]["message_id"], "✅ شما با پرداخت فدیه آزاد شدید!")
+            else:
+                answer_callback(cb_id, "❌ طلا کافی برای فدیه ندارید!", True)
+
+        # ثبت رأی مسابقه
+        elif data.startswith("vote_"):
             parts = data.split("_")
             event_id, opt_idx = int(parts[1]), int(parts[2])
             cur = conn.cursor()
