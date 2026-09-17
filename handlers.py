@@ -2,7 +2,7 @@ import time
 import random
 from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount, format_seconds
 from database import get_conn, release_conn, get_user, update_user
-from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD, ADMIN_IDS
+from config import CLAIM_COOLDOWN, DAILY_COOLDOWN_SECONDS, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD, ADMIN_IDS
 from admin import handle_admin_commands, handle_admin_callback
 from games import create_duel_game, handle_game_callback
 
@@ -116,13 +116,17 @@ def process_message(msg):
 
         elif stripped == "روزانه":
             now = time.time()
-            if now - u.get('last_daily', 0) < 86400:
-                remaining = 86400 - (now - u.get('last_daily', 0))
+            elapsed = now - u.get('last_daily', 0)
+            if elapsed < DAILY_COOLDOWN_SECONDS:
+                remaining = DAILY_COOLDOWN_SECONDS - elapsed
                 h, m, s = format_seconds(remaining)
-                send_message(chat_id, f"⏳ *شما قبلاً جایزه روزانه را گرفته‌اید!*\n\nلطفا {h} ساعت و {m} دقیقه و {s} ثانیه دیگر تلاش کنید.", parse_mode="Markdown", reply_to_message_id=reply_id); release_conn(conn); return
+                reply = f"⏳ شما قبلا جایزه روزانه را گرفته‌اید. لطفا {h} ساعت و {m} دقیقه {s} ثانیه دیگر تلاش کنید."
+                send_message(chat_id, reply, reply_to_message_id=reply_id); release_conn(conn); return
+
             amount = random.randint(300, 800)
             update_user(user_id, {"gold": u['gold'] + amount, "last_daily": now}, conn)
-            send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount} طلا!*", parse_mode="Markdown", reply_to_message_id=reply_id)
+            reply = f"*🎁 جایزه روزانه شما: {amount:,} طلا\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا*"
+            send_message(chat_id, reply, parse_mode="Markdown", reply_to_message_id=reply_id)
 
         elif stripped == "رتبه":
             cur = conn.cursor()
@@ -229,25 +233,54 @@ def process_message(msg):
             amount = extract_amount(text, "دوز")
             if amount and amount > 0 and u['gold'] >= amount:
                 update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "dooz", chat_id, user_id, u['name'], amount, f"❌⭕ بازی دوز شروع شد!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+                text_msg = (
+                    "❌⭕ بازی دوز (XO) شروع شد ⭕❌\n\n"
+                    f"👤 میزبان: {u['name']} (X)\n\n"
+                    "👤 حریف: منتظر...\n\n"
+                    f"💰 مبلغ شرط: {amount:,} طلا\n"
+                    f"🎁 جایزه برد: {amount * 2:,} طلا (پس از کسر ۵٪ مالیات)\n\n"
+                    "اگر کسی برای شرکت پیدا نشود، بعد 7 دقیقه بازی لغو می‌شود ✅"
+                )
+                create_duel_game(conn, "dooz", chat_id, user_id, u['name'], amount, text_msg)
 
         elif stripped.startswith("کازینو "):
             amount = extract_amount(text, "کازینو")
             if amount and amount > 0 and u['gold'] >= amount:
                 update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "casino", chat_id, user_id, u['name'], amount, f"🎰 کازینو جدید!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+                text_msg = (
+                    "(*کازینو جدید*)🎰\n\n"
+                    f"👤 میزبان: {u['name']}\n\n"
+                    f"💵 مبلغ شرط: {amount:,} طلا\n\n"
+                    "*•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••*\n"
+                    "(تا 5 دقیقه دیگر شرکت کننده‌ای نباشد کازینو باطل می‌شود)"
+                )
+                create_duel_game(conn, "casino", chat_id, user_id, u['name'], amount, text_msg)
 
         elif stripped.startswith("سنگ کاغذ قیچی "):
             amount = extract_amount(text, "سنگ کاغذ قیچی")
             if amount and amount > 0 and u['gold'] >= amount:
                 update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "rps", chat_id, user_id, u['name'], amount, f"✊✋✌️ سنگ‌کاغذقیچی!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+                text_msg = (
+                    "✊✋✌️ چالش سنگ‌کاغذقیچی شروع شد\n\n"
+                    f"👤 میزبان: {u['name']}\n\n"
+                    f"💰 مبلغ شرط: {amount:,} طلا\n"
+                    f"🎁 جایزه برد: {amount * 2:,} طلا (پس از کسر ۵٪ مالیات)\n\n"
+                    "اگر کسی برای شرکت پیدا نشود، بعد 5 دقیقه بازی لغو می‌شود ✅"
+                )
+                create_duel_game(conn, "rps", chat_id, user_id, u['name'], amount, text_msg)
 
         elif stripped.startswith("گل یا پوچ "):
             amount = extract_amount(text, "گل یا پوچ")
             if amount and amount > 0 and u['gold'] >= amount:
                 update_user(user_id, {"gold": u['gold'] - amount}, conn)
-                create_duel_game(conn, "guess", chat_id, user_id, u['name'], amount, f"🌸 گل یا پوچ!\n👤 میزبان: {u['name']}\n💰 مبلغ شرط: {amount:,} طلا")
+                text_msg = (
+                    "🌸 چالش گل یا پوچ شروع شد 🌸\n\n"
+                    f"👤 میزبان: {u['name']}\n\n"
+                    f"💰 مبلغ شرط: {amount:,} طلا\n"
+                    f"🎁 جایزه برد: {amount * 2:,} طلا (پس از کسر ۵٪ مالیات)\n\n"
+                    "اگر کسی برای شرکت پیدا نشود، بعد 5 دقیقه بازی لغو می‌شود ✅"
+                )
+                create_duel_game(conn, "guess", chat_id, user_id, u['name'], amount, text_msg)
 
         release_conn(conn)
     except Exception as e:
