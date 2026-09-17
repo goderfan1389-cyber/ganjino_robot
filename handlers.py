@@ -174,5 +174,7 @@ def process_callback(cb):
         """, (event_id, user_id, choice, choice))
         conn.commit()
         answer_callback(cb_id, f"انتخاب شما ثبت شد: {choice}", False)
-
+    # هندل دکمه‌های پنل ادمین
+    if data.startswith("admin_"):
+        handle_admin_callback(cb, conn, u)
     release_conn(conn)
