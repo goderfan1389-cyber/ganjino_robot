@@ -99,7 +99,6 @@ def _start_dooz(conn, cb, game, u):
     starter_name = game['host_name'] if symbols[str(game['host_id'])] == X_MARK else u['name']
     text = f"❌⭕ بازی دوز شروع شد ⭕❌\n👤 {game['host_name']} ({symbols[str(game['host_id'])]})\n👤 {u['name']} ({symbols[str(u['user_id'])]})\n💰 مبلغ شرط: {game['bet']:,} طلا\n\nنوبت {starter_name} ({X_MARK}) هست"
     
-    # باگ کیبورد دوز اینجا حل شد
     keyboard = {"inline_keyboard": [[{"text": EMPTY_CELL, "callback_data": f"dooz_move_{game['game_id']}_{row*3+col}"} for col in range(3)] for row in range(3)]}
     edit_message(chat_id, msg_id, text, reply_markup=keyboard)
     answer_callback(cb_id, "بازی شروع شد!")
@@ -131,10 +130,13 @@ def _handle_dooz_move(cb, conn, game, u, idx):
             text = "🤝 بازی مساوی شد! مبلغ شرط برگشت داده شد."
         else:
             win_id = game['host_id'] if game_data['symbols'][str(game['host_id'])] == winner else game['opponent_id']
-            prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
+            # اصلاح محاسبات مالیات
+            pot = game['bet'] * 2
+            tax = round(pot * GAME_TAX_PERCENT)
+            prize = pot - tax
             win_user = get_user(win_id, conn)
             update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
-            text = f"🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا"
+            text = f"🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا (کسر مالیات ۱۰٪)"
         cur.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
         conn.commit()
         edit_message(chat_id, msg_id, text, reply_markup={"inline_keyboard": []})
@@ -148,7 +150,7 @@ def _handle_dooz_move(cb, conn, game, u, idx):
         cur.execute("UPDATE games SET data = %s, deadline = %s WHERE game_id = %s", (json.dumps(game_data), time.time() + TURN_TIMEOUT, game['game_id']))
         conn.commit()
         
-        text = f"❌⭕ بازی دوز ⭕❌\n👤 {game['host_name']} ({game_data['symbols'][str(game['host_id'])]})\n👤 {game['opponent_name']} ({game_data['symbols'][str(game['opponent_id'])]})\n\nنوبت {next_name} ({game_data['turn']}) هست"
+        text = f"❌⭕ بازی دوز ⭕❌\n👤 {game['host_name']} ({game_data['symbols'][str(game['host_id'])]})\n👤 {game['opponent_name']} ({game_data['symbols'][str(game['opponent_id')]})\n\nنوبت {next_name} ({game_data['turn']}) هست"
         keyboard = {"inline_keyboard": [[{"text": game_data['board'][row*3+col], "callback_data": f"dooz_move_{game['game_id']}_{row*3+col}"} for col in range(3)] for row in range(3)]}
         edit_message(chat_id, msg_id, text, reply_markup=keyboard)
         answer_callback(cb_id)
@@ -159,7 +161,10 @@ def _resolve_casino(conn, cb, game, u):
     winner_id = game['host_id'] if winner_is_host else u['user_id']
     winner_name = game['host_name'] if winner_is_host else u['name']
     
-    prize = int(game['bet'] * 2 * (1 - CASINO_TAX_PERCENT))
+    # اصلاح محاسبات مالیات
+    pot = game['bet'] * 2
+    tax = round(pot * CASINO_TAX_PERCENT)
+    prize = pot - tax
     win_user = get_user(winner_id, conn)
     update_user(winner_id, {"gold": win_user['gold'] + prize}, conn)
     
@@ -167,7 +172,7 @@ def _resolve_casino(conn, cb, game, u):
     cur.execute("UPDATE games SET status = 'finished', opponent_id = %s, opponent_name = %s WHERE game_id = %s", (u['user_id'], u['name'], game['game_id']))
     conn.commit()
     
-    text = f"🎰 کازینو تموم شد!\n👤 {game['host_name']}\n👤 {u['name']}\n\nبرنده: 🎖 {winner_name}\n🎁 جایزه: {prize:,} طلا"
+    text = f"🎰 کازینو تموم شد!\n👤 {game['host_name']}\n👤 {u['name']}\n\nبرنده: 🎖 {winner_name}\n🎁 جایزه: {prize:,} طلا (کسر مالیات ۱۰٪)"
     edit_message(chat_id, msg_id, text, reply_markup={"inline_keyboard": []})
     answer_callback(cb_id, "نتیجه مشخص شد!")
 
@@ -207,9 +212,12 @@ def _handle_rps_choice(cb, conn, game, u, choice):
             host_wins = RPS_BEATS[host_ch] == opp_ch
             win_id = game['host_id'] if host_wins else game['opponent_id']
             win_user = get_user(win_id, conn)
-            prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
+            # اصلاح محاسبات مالیات
+            pot = game['bet'] * 2
+            tax = round(pot * GAME_TAX_PERCENT)
+            prize = pot - tax
             update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
-            text = f"🏆 {win_user['name']} برنده شد!\n{game['host_name']}: {RPS_NAMES[host_ch]}\n{game['opponent_name']}: {RPS_NAMES[opp_ch]}\n💰 جایزه: {prize:,} طلا"
+            text = f"🏆 {win_user['name']} برنده شد!\n{game['host_name']}: {RPS_NAMES[host_ch]}\n{game['opponent_name']}: {RPS_NAMES[opp_ch]}\n💰 جایزه: {prize:,} طلا (کسر مالیات ۱۰٪)"
         cur = conn.cursor()
         cur.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
         conn.commit()
@@ -259,7 +267,10 @@ def _handle_guess_pick(cb, conn, game, u, side):
     correct = side == game_data['flower_hand']
     win_id = game['opponent_id'] if correct else game['host_id']
     win_user = get_user(win_id, conn)
-    prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
+    # اصلاح محاسبات مالیات
+    pot = game['bet'] * 2
+    tax = round(pot * GAME_TAX_PERCENT)
+    prize = pot - tax
     update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
     
     cur = conn.cursor()
@@ -268,7 +279,7 @@ def _handle_guess_pick(cb, conn, game, u, side):
     
     host_hand = "چپ" if game_data['flower_hand']=='left' else "راست"
     opp_hand = "چپ" if side=='left' else "راست"
-    text = f"🌸 {game['host_name']} گل رو در دست {host_hand} قایم کرد!\n{game['opponent_name']} دست {opp_hand} رو انتخاب کرد.\n\n🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا"
+    text = f"🌸 {game['host_name']} گل رو در دست {host_hand} قایم کرد!\n{game['opponent_name']} دست {opp_hand} رو انتخاب کرد.\n\n🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا (کسر مالیات ۱۰٪)"
     edit_message(chat_id, msg_id, text, reply_markup={"inline_keyboard": []})
     answer_callback(cb_id, "بازی تمام شد.")
 
@@ -293,9 +304,12 @@ def check_expired_games():
             win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id']
             if win_id:
                 win_user = get_user(win_id, conn)
-                prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
+                # اصلاح محاسبات مالیات برای تایم‌اوت
+                pot = game['bet'] * 2
+                tax = round(pot * GAME_TAX_PERCENT)
+                prize = pot - tax
                 update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
-                edit_message(game['chat_id'], game['message_id'], f"⏰ زمان تمام شد!\n🏆 {win_user['name']} برنده شد!")
+                edit_message(game['chat_id'], game['message_id'], f"⏰ زمان تمام شد!\n🏆 {win_user['name']} برنده شد!\n💰 جایزه: {prize:,} طلا")
             cur2 = conn.cursor()
             cur2.execute("UPDATE games SET status = 'finished' WHERE game_id = %s", (game['game_id'],))
         conn.commit()
