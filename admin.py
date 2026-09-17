@@ -1,177 +1,177 @@
 import time
 import random
-import requests
-import datetime
-import json
-from utils import send_message, admin_panel_keyboard
-from database import get_conn, get_user, update_user
-from config import BASE_URL, ADMIN_IDS, MAIN_GROUP_USERNAME
+from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount
+from database import get_conn, release_conn, get_user, update_user
+from config import CLAIM_COOLDOWN, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS
+from admin import handle_admin_commands
 
-def is_admin(user_id): return user_id in ADMIN_IDS
-
-admin_states = {}
-
-def handle_admin_commands(msg, u, conn, reply_id=None):
+def process_message(msg):
     chat_id = msg["chat"]["id"]
-    text = msg.get("text", "").strip()
-    user_id = u['user_id']
+    text = msg.get("text", "")
+    user = msg.get("from", {})
+    user_id = user.get("id")
+    chat_type = msg.get("chat", {}).get("type", "private")
+    reply_id = msg["message_id"] if chat_type in ("group", "supergroup") else None
 
-    if not is_admin(user_id): return False
+    if not text or user_id is None: return
+    
+    conn = get_conn()
+    u = get_user(user_id, conn)
+    
+    # رفع باگ پی‌وی: اگر کاربر اسم نداشت، یوزرنیم یا کلمه کاربر رو بذار
+    fname = user.get("first_name") or user.get("username") or "کاربر"
+    if u['name'] != fname:
+        update_user(user_id, {"name": fname}, conn)
 
-    state = admin_states.get(user_id)
-    if state:
-        if text == "انصراف":
-            del admin_states[user_id]
-            send_message(chat_id, "❌ عملیات لغو شد.", reply_id)
-            return True
+    if handle_admin_commands(msg, u, conn, reply_id):
+        release_conn(conn)
+        return
 
-        if state['step'] == 'msg':
-            state['data']['msg_id'] = msg['message_id']
-            state['step'] = 'num_opts'
-            send_message(chat_id, "تعداد گزینه‌ها را وارد کنید (مثلا 3):")
-            return True
+    stripped = text.strip()
+    
+    # اگر تو زندانه، بقیه دستورات کار نکنن جز /start و کیف
+    if is_jailed(u) and stripped not in ["/start", "کیف"]:
+        keyboard = {"inline_keyboard": [[{"text": f"💰 پرداخت فدیه ({JAIL_RANSOM} طلا)", "callback_data": f"jail_pay_{user_id}"}]]}
+        send_message(chat_id, f"🚔 *شما در زندان هستید!*\n⏳ {int(u['jail_until'] - time.time())} ثانیه تا آزادی.\n\nبرای آزادی فوری، فدیه پرداخت کنید:", reply_markup=keyboard, parse_mode="Markdown", reply_to_message_id=reply_id)
+        release_conn(conn)
+        return
 
-        if state['step'] == 'num_opts':
-            if not text.isdigit(): send_message(chat_id, "عدد وارد کنید."); return True
-            state['data']['num_opts'] = int(text)
-            state['data']['options'] = []
-            state['step'] = 'opt'
-            send_message(chat_id, "گزینه 1 را وارد کنید:")
-            return True
+    if stripped == "/start":
+        send_message(chat_id, "🤖 به ربات طلا خوش آمدید!\nبرای دیدن موجودی خود بنویسید: کیف", reply_to_message_id=reply_id)
 
-        if state['step'] == 'opt':
-            state['data']['options'].append(text)
-            if len(state['data']['options']) < state['data']['num_opts']:
-                send_message(chat_id, f"گزینه {len(state['data']['options'])+1} را وارد کنید:")
-            else:
-                state['step'] = 'time'
-                send_message(chat_id, "تا چه ساعتی مهلت دارند؟ (فرمت 24 ساعته مثال: 19:30)")
-            return True
+    elif stripped == "کیف":
+        items_str = "\n".join([f"{ITEMS[k]['emoji']} {k} × {v}" for k, v in u['items'].items()])
+        if not items_str: items_str = "خالی"
+        send_message(chat_id, f"💼 *کیف طلا شما:*\n\n🪙 کیسه طلا: {u['gold']:,}\n🏦 خزانه: {u['bank']:,}\n\n🎒 آیتم‌ها:\n{items_str}", parse_mode="Markdown", reply_to_message_id=reply_id)
 
-        if state['step'] == 'time':
-            try:
-                h, m = map(int, text.split(':'))
-                now = datetime.datetime.now()
-                deadline = now.replace(hour=h, minute=m, second=0, microsecond=0)
-                if deadline < now: deadline += datetime.timedelta(days=1)
-                
-                cur = conn.cursor()
-                cur.execute("INSERT INTO events (admin_chat_id, admin_msg_id, options, deadline, status) VALUES (%s, %s, %s, %s, 'active') RETURNING event_id", 
-                            (chat_id, state['data']['msg_id'], state['data']['options'], deadline.timestamp()))
-                event_id = cur.fetchone()[0]
-                conn.commit()
-                
-                requests.post(f"{BASE_URL}/forwardMessage", data={"chat_id": f"@{MAIN_GROUP_USERNAME}", "from_chat_id": chat_id, "message_id": state['data']['msg_id']})
-                
-                keyboard = {"inline_keyboard": [[{"text": opt, "callback_data": f"vote_{event_id}_{i}"}] for i, opt in enumerate(state['data']['options'])]}
-                send_message(f"@{MAIN_GROUP_USERNAME}", "⚽ مسابقه پیش‌بینی! انتخاب کنید:", reply_markup=keyboard)
-                
-                del admin_states[user_id]
-                send_message(chat_id, "✅ مسابقه در گروه ایجاد شد.")
-            except:
-                send_message(chat_id, "فرمت ساعت اشتباه است. مثال درست: 19:30")
-            return True
-
-        if state['step'] == 'end_select':
-            if not text.isdigit(): return True
-            event_id = int(text)
-            cur = conn.cursor()
-            cur.execute("SELECT options FROM events WHERE event_id=%s AND status='active'", (event_id,))
-            row = cur.fetchone()
-            if not row:
-                send_message(chat_id, "مسابقه پیدا نشد."); return True
-            options = row[0]
-            state['data']['event_id'] = event_id
-            text_opt = "\n".join([f"{i+1}. {opt}" for i, opt in enumerate(options)])
-            state['step'] = 'end_opt'
-            send_message(chat_id, f"کدام گزینه برنده است؟\n{text_opt}\nشماره را بفرستید:")
-            return True
-
-        if state['step'] == 'end_opt':
-            if not text.isdigit(): return True
-            win_idx = int(text) - 1
-            state['data']['win_idx'] = win_idx
-            items_list = ["1. طلا کیسه", "2. طلا خزانه", "3. سپر", "4. چاقو", "5. ماسک", "6. آهنربا", "7. بلیط آزادی"]
-            state['step'] = 'end_prize'
-            send_message(chat_id, f"جوایز را با این فرمت بفرستید (مثال: 1=500 2=2000 3=2):\n" + "\n".join(items_list))
-            return True
-
-        if state['step'] == 'end_prize':
-            prizes = {}
-            try:
-                for p in text.split():
-                    k, v = p.split('=')
-                    prizes[k] = int(v)
-            except:
-                send_message(chat_id, "فرمت اشتباه. مثال: 1=500 2=2000 3=2")
-                return True
-                
-            event_id = state['data']['event_id']
-            win_idx = state['data']['win_idx']
-            
-            cur = conn.cursor()
-            cur.execute("SELECT options FROM events WHERE event_id=%s", (event_id,))
-            options = cur.fetchone()[0]
-            win_option = options[win_idx]
-            
-            cur.execute("SELECT user_id FROM event_votes WHERE event_id=%s AND choice=%s", (event_id, win_option))
-            winners = cur.fetchall()
-            
-            for (wid,) in winners:
-                w_user = get_user(wid, conn)
-                items = w_user['items']
-                if '1' in prizes: w_user['gold'] += prizes['1']
-                if '2' in prizes: w_user['bank'] += prizes['2']
-                if '3' in prizes: items['سپر'] = items.get('سپر', 0) + prizes['3']
-                if '4' in prizes: items['چاقو'] = items.get('چاقو', 0) + prizes['4']
-                if '5' in prizes: items['ماسک'] = items.get('ماسک', 0) + prizes['5']
-                if '6' in prizes: items['آهنربا'] = items.get('آهنربا', 0) + prizes['6']
-                if '7' in prizes: items['بلیط آزادی'] = items.get('بلیط آزادی', 0) + prizes['7']
-                update_user(wid, {"gold": w_user['gold'], "bank": w_user['bank'], "items": items}, conn)
-                
-            cur.execute("UPDATE events SET status='finished', winning_option=%s WHERE event_id=%s", (win_option, event_id))
-            conn.commit()
-            
-            send_message(f"@{MAIN_GROUP_USERNAME}", f"🏁 مسابقه تمام شد!\nگزینه برنده: {win_option}\nجوایز به برندگان داده شد (نام‌ها فاش نمیشه).")
-            del admin_states[user_id]
-            send_message(chat_id, "✅ جوایز با موفقیت توزیع شد.")
-            return True
-
-    # --- دستورات عادی ادمین ---
-    if text == "/admin" or text == "پنل":
-        send_message(chat_id, "🛠 پنل مدیریت ربات طلا\nیکی از گزینه‌ها رو انتخاب کن:", reply_markup=admin_panel_keyboard())
-        return True
+    elif stripped == "طلا":
+        now = time.time()
+        if now - u['last_claim'] < CLAIM_COOLDOWN:
+            send_message(chat_id, "🔴 هنوز وقت دریافت طلا نرسیده!", reply_to_message_id=reply_id); release_conn(conn); return
         
-    if text.startswith("خزانه "):
-        try:
-            parts = text.split()
-            target_id, amount = int(parts[1]), int(parts[2])
-            update_user(target_id, {"bank": get_user(target_id, conn)['bank'] + amount}, conn)
-            send_message(chat_id, f"✅ {amount} طلا به خزانه کاربر {target_id} اضافه شد.")
-        except:
-            send_message(chat_id, "فرمت: خزانه [آیدی] [مقدار]")
-        return True
+        amount = random.randint(80, 250)
+        update_user(user_id, {"gold": u['gold'] + amount, "last_claim": now, "xp": u.get('xp',0) + 1}, conn)
+        send_message(chat_id, f"💰 *تبریک! شما {amount} طلا دریافت کردید!*\n🪙 موجودی کیسه: {u['gold']+amount:,} طلا", parse_mode="Markdown", reply_to_message_id=reply_id)
 
-    if text == "بکاپ":
-        import os
+    elif stripped == "روزانه":
+        now = time.time()
+        if now - u.get('last_daily', 0) < 86400:
+            send_message(chat_id, "🔴 هنوز وقت دریافت جایزه روزانه نرسیده!", reply_to_message_id=reply_id); release_conn(conn); return
+        amount = random.randint(300, 800)
+        update_user(user_id, {"gold": u['gold'] + amount, "last_daily": now}, conn)
+        send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount} طلا!*", parse_mode="Markdown", reply_to_message_id=reply_id)
+
+    elif stripped == "دزدی":
+        reply_to = msg.get("reply_to_message")
+        if not reply_to:
+            send_message(chat_id, "برای دزدی، روی پیام فرد ریپلای کنید و بنویسید دزدی.", reply_to_message_id=reply_id); release_conn(conn); return
+
+        target_id = reply_to.get("from", {}).get("id")
+        if target_id == user_id:
+            send_message(chat_id, "نمی‌توانید از خودتان بدزدید!", reply_to_message_id=reply_id); release_conn(conn); return
+
+        now = time.time()
+        if now - u['last_steal'] < STEAL_COOLDOWN:
+            warnings = u['steal_warnings'] + 1
+            if warnings >= STEAL_WARNINGS_LIMIT:
+                update_user(user_id, {"jail_until": now + JAIL_SECONDS, "steal_warnings": 0}, conn)
+                keyboard = {"inline_keyboard": [[{"text": f"💰 پرداخت فدیه ({JAIL_RANSOM} طلا)", "callback_data": f"jail_pay_{user_id}"}]]}
+                send_message(chat_id, f"🚔 *پافشاری کردی! زندان ۱۰ دقیقه.*\nفدیه: {JAIL_RANSOM} طلا", reply_markup=keyboard, parse_mode="Markdown", reply_to_message_id=reply_id)
+            else:
+                update_user(user_id, {"steal_warnings": warnings}, conn)
+                send_message(chat_id, f"⏳ *۳۰ ثانیه نرفته!*\nاخطار {warnings} از {STEAL_WARNINGS_LIMIT}.", parse_mode="Markdown", reply_to_message_id=reply_id)
+            release_conn(conn); return
+
+        target = get_user(target_id, conn)
+        if target['gold'] <= 0:
+            send_message(chat_id, "این کاربر طلا در کیسه ندارد!", reply_to_message_id=reply_id); release_conn(conn); return
+
+        steal_amount = min(random.randint(30, 100), target['gold'])
+        update_user(target_id, {"gold": target['gold'] - steal_amount}, conn)
+        update_user(user_id, {"gold": u['gold'] + steal_amount, "last_steal": now, "steal_warnings": 0}, conn)
+        send_message(chat_id, f"🥷 *دزدی موفق!*\n💰 شما {steal_amount} طلا دزدیدید.", parse_mode="Markdown", reply_to_message_id=reply_id)
+
+    elif stripped == "فروشگاه":
+        send_message(chat_id, """🛒 فروشگاه ربات:
+
+🛡 سپر — 100 طلا
+🔪 چاقو — 100 طلا
+🎭 ماسک — 100 طلا
+🧲 آهنربا — 100 طلا
+🎫 بلیط آزادی — 47 طلا
+
+برای خرید بنویسید: خرید [نام آیتم]""", reply_to_message_id=reply_id)
+
+    elif stripped.startswith("خرید "):
+        item_name = stripped[5:].strip()
+        if item_name not in ITEMS:
+            send_message(chat_id, "❌ همچین آیتمی در فروشگاه نیست.", reply_to_message_id=reply_id); release_conn(conn); return
+        price = ITEMS[item_name]["price"]
+        if u['gold'] < price:
+            send_message(chat_id, "❌ موجودی کیسه طلا کافی نیست.", reply_to_message_id=reply_id); release_conn(conn); return
+        u['gold'] -= price
+        u['items'][item_name] = u['items'].get(item_name, 0) + 1
+        update_user(user_id, {"gold": u['gold'], "items": u['items']}, conn)
+        send_message(chat_id, f"✅ شما {ITEMS[item_name]['emoji']} {item_name} را خریدید.", reply_to_message_id=reply_id)
+
+    elif stripped.startswith("واریز "):
+        amount = extract_amount(text, "واریز")
+        if amount is None or amount <= 0 or u['gold'] < amount:
+            send_message(chat_id, "❌ مبلغ نامعتبر یا کافی نیست.", reply_to_message_id=reply_id); release_conn(conn); return
+        u['gold'] -= amount
+        u['bank'] += amount
+        update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
+        send_message(chat_id, f"✅ {amount} طلا به خزانه واریز شد.", reply_to_message_id=reply_id)
+
+    elif stripped.startswith("برداشت "):
+        amount = extract_amount(text, "برداشت")
+        if amount is None or amount <= 0 or u['bank'] < amount:
+            send_message(chat_id, "❌ مبلغ نامعتبر یا خزانه کافی نیست.", reply_to_message_id=reply_id); release_conn(conn); return
+        u['bank'] -= amount
+        u['gold'] += amount
+        update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
+        send_message(chat_id, f"✅ {amount} طلا از خزانه برداشت شد.", reply_to_message_id=reply_id)
+
+    release_conn(conn)
+
+def process_callback(cb):
+    cb_id = cb["id"]
+    chat_id = cb["message"]["chat"]["id"]
+    user_id = cb.get("from", {}).get("id")
+    data = cb.get("data", "")
+    msg_id = cb["message"]["message_id"]
+
+    conn = get_conn()
+    u = get_user(user_id, conn)
+
+    # پرداخت فدیه زندان
+    if data.startswith("jail_pay_"):
+        if u['gold'] >= JAIL_RANSOM:
+            update_user(user_id, {"gold": u['gold'] - JAIL_RANSOM, "jail_until": 0}, conn)
+            answer_callback(cb_id, "✅ شما آزاد شدید!", False)
+            edit_message(chat_id, msg_id, "✅ شما با پرداخت فدیه آزاد شدید!")
+        else:
+            answer_callback(cb_id, "❌ طلا کافی برای فدیه ندارید!", True)
+
+    # ثبت رأی مسابقه
+    elif data.startswith("vote_"):
+        parts = data.split("_")
+        event_id, opt_idx = int(parts[1]), int(parts[2])
         cur = conn.cursor()
-        cur.execute("SELECT * FROM users")
-        rows = cur.fetchall()
-        colnames = [desc[0] for desc in cur.description]
-        sql_lines = ["-- Bot PostgreSQL Backup", "TRUNCATE TABLE users RESTART IDENTITY CASCADE;"]
-        for row in rows:
-            values = []
-            for val in row:
-                if isinstance(val, dict): val = json.dumps(val)
-                if val is None: values.append("NULL")
-                elif isinstance(val, (int, float)): values.append(str(val))
-                else: values.append(f"'{str(val).replace(chr(39), chr(39)+chr(39))}'")
-            sql_lines.append(f"INSERT INTO users ({', '.join(colnames)}) VALUES ({', '.join(values)});")
-        with open("backup.sql", "w", encoding="utf-8") as f:
-            f.write("\n".join(sql_lines))
-        from utils import send_document
-        send_document(chat_id, "backup.sql", "📥 فایل بکاپ دیتابیس (SQL)")
-        if os.path.exists("backup.sql"): os.remove("backup.sql")
-        return True
+        cur.execute("SELECT options, deadline FROM events WHERE event_id=%s AND status='active'", (event_id,))
+        row = cur.fetchone()
+        if not row:
+            answer_callback(cb_id, "مسابقه پیدا نشد.", True); release_conn(conn); return
+        options, deadline = row
+        if time.time() > deadline:
+            answer_callback(cb_id, "زمان مسابقه به پایان رسیده!", True); release_conn(conn); return
+        
+        choice = options[opt_idx]
+        cur.execute("""
+            INSERT INTO event_votes (event_id, user_id, choice) VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, event_id) DO UPDATE SET choice=%s
+        """, (event_id, user_id, choice, choice))
+        conn.commit()
+        answer_callback(cb_id, f"انتخاب شما ثبت شد: {choice}", False)
 
-    return False
+    release_conn(conn)
