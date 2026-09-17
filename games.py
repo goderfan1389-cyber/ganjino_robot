@@ -1,7 +1,7 @@
 import time
 import json
 import random
-from utils import send_message, edit_message, answer_callback
+from utils import send_message, edit_message, answer_callback, delete_message
 from database import get_conn, get_user, update_user
 from config import (GAME_TAX_PERCENT, CASINO_TAX_PERCENT, TURN_TIMEOUT, 
                     DOOZ_WAIT_TIMEOUT, CASINO_WAIT_TIMEOUT, RPS_WAIT_TIMEOUT, GUESS_WAIT_TIMEOUT,
@@ -40,7 +40,7 @@ def handle_game_callback(cb, conn, u):
     action = parts[1]
     game_id = int(parts[2])
 
-    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
     game = cur.fetchone()
     if not game:
@@ -73,16 +73,17 @@ def handle_game_callback(cb, conn, u):
         update_user(game['host_id'], {"gold": host['gold'] + game['bet']}, conn)
         cur.execute("UPDATE games SET status = 'cancelled' WHERE game_id = %s", (game_id,))
         conn.commit()
-        edit_message(chat_id, msg_id, "❌ بازی لغو شد و مبلغ شرط برگشت داده شد.")
-        answer_callback(cb_id, "لغو شد.")
+        # پاک کردن پیام بازی از گروه
+        delete_message(chat_id, msg_id)
+        answer_callback(cb_id, "بازی لغو شد و طلای شما برگشت.")
 
-    elif action == "move": # فقط برای دوز
+    elif action == "move":
         _handle_dooz_move(cb, conn, game, u, int(parts[3]))
-    elif action == "choice": # فقط برای سنگ کاغذ قیچی
+    elif action == "choice":
         _handle_rps_choice(cb, conn, game, u, parts[3])
-    elif action == "hide": # برای گل یا پوچ
+    elif action == "hide":
         _handle_guess_hide(cb, conn, game, u, parts[3])
-    elif action == "pick": # برای گل یا پوچ
+    elif action == "pick":
         _handle_guess_pick(cb, conn, game, u, parts[3])
 
 def _start_dooz(conn, cb, game, u):
@@ -108,7 +109,6 @@ def _handle_dooz_move(cb, conn, game, u, idx):
 
     game_data['board'][idx] = game_data['turn']
     
-    # بررسی برنده
     win_lines = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
     winner = None
     for a,b,c in win_lines:
@@ -125,10 +125,7 @@ def _handle_dooz_move(cb, conn, game, u, idx):
             update_user(game['opponent_id'], {"gold": opp['gold'] + game['bet']}, conn)
             text = "🤝 بازی مساوی شد! مبلغ شرط برگشت داده شد."
         else:
-            win_id = game['host_id'] if winner == X_MARK else game['opponent_id'] # This is simplified, need proper mapping
-            if game_data['symbols'][str(game['host_id'])] == winner: win_id = game['host_id']
-            else: win_id = game['opponent_id']
-            
+            win_id = game['host_id'] if game_data['symbols'][str(game['host_id'])] == winner else game['opponent_id']
             prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
             win_user = get_user(win_id, conn)
             update_user(win_id, {"gold": win_user['gold'] + prize}, conn)
@@ -264,23 +261,21 @@ def _handle_guess_pick(cb, conn, game, u, side):
 
 def check_expired_games():
     conn = get_conn()
-    cur = conn.cursor(cursor_factory=extras.RealDictCursor)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     now = time.time()
     
-    # لغو بازی‌های وایتنگ
     cur.execute("SELECT * FROM games WHERE status = 'waiting' AND created_at < %s", (now - DOOZ_WAIT_TIMEOUT,))
     for game in cur.fetchall():
         host = get_user(game['host_id'], conn)
         update_user(game['host_id'], {"gold": host['gold'] + game['bet']}, conn)
         cur2 = conn.cursor()
         cur2.execute("UPDATE games SET status = 'cancelled' WHERE game_id = %s", (game['game_id'],))
-        edit_message(game['chat_id'], game['message_id'], "⏰ کسی برای بازی پیدا نشد. لغو شد.")
+        delete_message(game['chat_id'], game['message_id'])
     conn.commit()
-    # تایم‌اوت نوبت‌ها (فکت ساده)
+
     cur.execute("SELECT * FROM games WHERE status IN ('active', 'hiding', 'guessing') AND deadline < %s", (now,))
     for game in cur.fetchall():
-        # برنده رو در صورت تایم اوت مشخص کردن (ساده شده)
-        win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id'] # کسی که نوبتش نبود برنده میشه
+        win_id = game['opponent_id'] if game['status'] == 'active' else game['host_id']
         if win_id:
             win_user = get_user(win_id, conn)
             prize = int(game['bet'] * 2 * (1 - GAME_TAX_PERCENT))
