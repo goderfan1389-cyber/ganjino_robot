@@ -150,7 +150,7 @@ def _handle_dooz_move(cb, conn, game, u, idx):
         cur.execute("UPDATE games SET data = %s, deadline = %s WHERE game_id = %s", (json.dumps(game_data), time.time() + TURN_TIMEOUT, game['game_id']))
         conn.commit()
         
-        text = f"❌⭕ بازی دوز ⭕❌\n👤 {game['host_name']} ({game_data['symbols'][str(game['host_id'])]})\n👤 {game['opponent_name']} ({game_data['symbols'][str(game['opponent_id')]})\n\nنوبت {next_name} ({game_data['turn']}) هست"
+        text = f"❌⭕ بازی دوز ⭕❌\n👤 {game['host_name']} ({game_data['symbols'][str(game['host_id'])]})\n👤 {game['opponent_name']} ({game_data['symbols'][str(game['opponent_id'])]})\n\nنوبت {next_name} ({game_data['turn']}) هست"
         keyboard = {"inline_keyboard": [[{"text": game_data['board'][row*3+col], "callback_data": f"dooz_move_{game['game_id']}_{row*3+col}"} for col in range(3)] for row in range(3)]}
         edit_message(chat_id, msg_id, text, reply_markup=keyboard)
         answer_callback(cb_id)
