@@ -6,7 +6,7 @@ from config import BASE_URL, JOIN_CHANNEL_USERNAME
 
 session = requests.Session()
 
-def send_message(chat_id, text, reply_markup=None, parse_mode="Markdown", reply_to_message_id=None):
+def send_message(chat_id, text, reply_markup=None, parse_mode=None, reply_to_message_id=None):
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup: payload["reply_markup"] = json.dumps(reply_markup)
     if parse_mode: payload["parse_mode"] = parse_mode
@@ -39,6 +39,12 @@ def extract_amount(text, keyword):
     import re
     num = re.sub(r"[^\d]", "", rem.split()[0])
     return int(num) if num else None
+
+def format_seconds(total_seconds):
+    total_seconds = max(0, int(total_seconds))
+    h, rem = divmod(total_seconds, 3600)
+    m, s = divmod(rem, 60)
+    return h, m, s
 
 def send_document(chat_id, file_path, caption=None):
     url = f"{BASE_URL}/sendDocument"
