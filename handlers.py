@@ -3,8 +3,8 @@ import random
 from utils import send_message, answer_callback, edit_message, is_jailed, extract_amount, format_seconds
 from database import get_conn, release_conn, get_user, update_user
 from config import CLAIM_COOLDOWN, DAILY_COOLDOWN_SECONDS, STEAL_COOLDOWN, STEAL_WARNINGS_LIMIT, JAIL_SECONDS, JAIL_RANSOM, ITEMS, OWNER_ID, OWNER_RESET_USER_CMD, ADMIN_IDS
-from admin import handle_admin_commands, handle_admin_callback
-from games import create_duel_game, handle_game_callback
+from admin import handle_admin_commands, handle_admin_callback, check_expired_events 
+from games import create_duel_game, handle_game_callback, check_expired_games
 
 START_TEXT = """🤖 به ربات اقتصاد-بازی خوش آمدید!
 برای دیدن دستورات، /help را بزنید."""
@@ -370,3 +370,12 @@ def process_callback(cb):
 
     finally:
         if conn: release_conn(conn)
+
+def timeout_loop():
+    while True:
+        try:
+            check_expired_games()
+            check_expired_events()
+        except Exception as e:
+            print("Timeout Error:", e)
+        time.sleep(15)
