@@ -29,6 +29,11 @@ REFERRAL_BONUS = 7500
 STEAL_COOLDOWN = 30
 STEAL_WARNINGS_LIMIT = 3
 
+# ===== تنظیمات شانس دزدی و پلیس =====
+ARREST_BASE_CHANCE = 0.30
+MASK_ARREST_DISCOUNT = 0.15  # ماسک شانس رو میاره پایین 15%
+MAGNET_GOLD_BONUS = 2.5     # آهنربا پول رو 2.5 برابر میکنه
+
 ITEMS = {
     "سپر": {"emoji": "🛡", "price": 100},
     "چاقو": {"emoji": "🔪", "price": 100},
