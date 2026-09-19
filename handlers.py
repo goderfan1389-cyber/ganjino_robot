@@ -142,7 +142,7 @@ def process_message(msg):
 
             amount = random.randint(300, 800)
             update_user(user_id, {"gold": u['gold'] + amount, "last_daily": now}, conn)
-            send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount:,} طلا!*\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا", parse_mode="Markdown", reply_to_message_id=reply_id)
+            send_message(chat_id, f"🎁 *جایزه روزانه شما: {amount:,} طلا!*\n\nکیسه طلا: {u['gold'] + amount:,} طلا\nخزانه: {u['bank']:,} طلا", parse_mode="Markdown", reply_to_message_id=reply_id)
 
         elif stripped == "رتبه":
             cur = conn.cursor()
