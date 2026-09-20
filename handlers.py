@@ -308,29 +308,35 @@ def process_message(msg):
             send_message(chat_id, f"✅ شما {emoji} {item_name} را خریدید.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا", reply_to_message_id=reply_id)
 
         elif stripped.startswith("واریز "):
+            if is_jailed(u):
+                send_jail_block(chat_id, user_id, u, reply_id)
+                return
             amount = extract_amount(text, "واریز")
             if amount is None or amount <= 0:
-                send_message(chat_id, "❌ عدد وارد شده معتبر نیست.", reply_to_message_id=reply_id); return
-            if u['gold'] >= amount:
-                u['gold'] -= amount
-                u['bank'] += amount
-                update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
-                reply = f"🏦 مبلغ {amount:,} طلا به خزانه منتقل شد.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا"
-            else:
-                reply = "❌ موجودی کافی برای واریز ندارید."
+                send_message(chat_id, "❌ مبلغ نامعتبر است.", reply_to_message_id=reply_id); return
+            if u['gold'] < amount:
+                send_message(chat_id, "❌ موجودی کیسه طلای شما کافی نیست.", reply_to_message_id=reply_id); return
+            
+            u['gold'] -= amount
+            u['bank'] += amount
+            update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
+            reply = f"🏦 مبلغ {amount:,} طلا به خزانه منتقل شد.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا"
             send_message(chat_id, reply, reply_to_message_id=reply_id)
 
         elif stripped.startswith("برداشت "):
+            if is_jailed(u):
+                send_jail_block(chat_id, user_id, u, reply_id)
+                return
             amount = extract_amount(text, "برداشت")
             if amount is None or amount <= 0:
-                send_message(chat_id, "❌ عدد وارد شده معتبر نیست.", reply_to_message_id=reply_id); return
-            if u['bank'] >= amount:
-                u['bank'] -= amount
-                u['gold'] += amount
-                update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
-                reply = f"💸 مبلغ {amount:,} طلا از خزانه برداشت شد.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا"
-            else:
-                reply = "❌ موجودی خزانه کافی نیست."
+                send_message(chat_id, "❌ مبلغ نامعتبر است.", reply_to_message_id=reply_id); return
+            if u['bank'] < amount:
+                send_message(chat_id, "❌ موجودی خزانه شما کافی نیست.", reply_to_message_id=reply_id); return
+                
+            u['bank'] -= amount
+            u['gold'] += amount
+            update_user(user_id, {"gold": u['gold'], "bank": u['bank']}, conn)
+            reply = f"💸 مبلغ {amount:,} طلا از خزانه برداشت شد.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا"
             send_message(chat_id, reply, reply_to_message_id=reply_id)
 
         # --- بازی ها ---
