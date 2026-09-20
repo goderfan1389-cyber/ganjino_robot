@@ -99,7 +99,7 @@ def process_message(msg):
 
         stripped = text.strip()
         
-        if is_jailed(u) and stripped not in ["/start", "کیف", "/help", "کمک"]:
+        if is_jailed(u) and not (stripped.startswith("واریز ") or stripped.startswith("برداشت ") or stripped in ["/start", "کیف", "/help", "کمک"]):
             send_jail_block(chat_id, user_id, u, reply_id)
             return
 
@@ -308,9 +308,6 @@ def process_message(msg):
             send_message(chat_id, f"✅ شما {emoji} {item_name} را خریدید.\n\nکیسه طلا: {u['gold']:,} طلا\nخزانه: {u['bank']:,} طلا", reply_to_message_id=reply_id)
 
         elif stripped.startswith("واریز "):
-            if is_jailed(u):
-                send_jail_block(chat_id, user_id, u, reply_id)
-                return
             amount = extract_amount(text, "واریز")
             if amount is None or amount <= 0:
                 send_message(chat_id, "❌ مبلغ نامعتبر است.", reply_to_message_id=reply_id); return
@@ -324,9 +321,6 @@ def process_message(msg):
             send_message(chat_id, reply, reply_to_message_id=reply_id)
 
         elif stripped.startswith("برداشت "):
-            if is_jailed(u):
-                send_jail_block(chat_id, user_id, u, reply_id)
-                return
             amount = extract_amount(text, "برداشت")
             if amount is None or amount <= 0:
                 send_message(chat_id, "❌ مبلغ نامعتبر است.", reply_to_message_id=reply_id); return
